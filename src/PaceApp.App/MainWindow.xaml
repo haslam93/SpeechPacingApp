@@ -4,14 +4,15 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Pace Coach"
+        Title="{Binding WindowTitle}"
         Width="392"
-        Height="760"
+        Height="860"
         MinWidth="360"
-        MinHeight="640"
+        MinHeight="700"
         Background="#09111F"
         Foreground="#F8FAFC"
-        WindowStartupLocation="Manual">
+        ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#0F766E" />
@@ -56,6 +57,7 @@
     <Border Padding="18">
         <Grid>
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -110,7 +112,7 @@
                                  Margin="0,14,0,0"
                                  Height="10"
                                  Maximum="220"
-                                 Value="{Binding CurrentWpm}"
+                                 Value="{Binding CurrentWpm, Mode=OneWay}"
                                  Background="#172235"
                                  Foreground="{Binding AlertBorderBrush}" />
 
@@ -190,7 +192,65 @@
                 </StackPanel>
             </StackPanel>
 
-            <Grid Grid.Row="4" Margin="0,18,0,0">
+            <Border Grid.Row="4"
+                    Margin="0,18,0,0"
+                    Padding="14"
+                    CornerRadius="18"
+                    Background="#0F172A"
+                    BorderBrush="#243247"
+                    BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel>
+                        <TextBlock Text="Troubleshooting" FontSize="18" FontWeight="SemiBold" />
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="Copy log"
+                                    Command="{Binding CopyDiagnosticsCommand}"
+                                    Style="{StaticResource QuietButtonStyle}"
+                                    Width="86" />
+                            <Button Content="Open log"
+                                    Command="{Binding OpenDiagnosticsCommand}"
+                                    Style="{StaticResource QuietButtonStyle}"
+                                    Width="86"
+                                    Margin="0" />
+                        </StackPanel>
+                    </DockPanel>
+
+                    <TextBlock Grid.Row="1"
+                               Margin="0,8,0,0"
+                               Foreground="#8CA3BF"
+                               Text="{Binding LaunchModeLabel}" />
+
+                    <Border Grid.Row="2"
+                            Margin="0,12,0,0"
+                            Height="150"
+                            CornerRadius="12"
+                            Background="#09111F"
+                            BorderBrush="#1E293B"
+                            BorderThickness="1">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding DiagnosticMessages}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}"
+                                                   Margin="10,6,10,0"
+                                                   Foreground="#CBD5E1"
+                                                   FontSize="12"
+                                                   TextWrapping="Wrap" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="5" Margin="0,18,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />

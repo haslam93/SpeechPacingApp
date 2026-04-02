@@ -24,6 +24,8 @@ The current version includes:
 * Live pace estimation from audio signal activity and pause structure
 * Visual alert states for calm, caution, and critical pacing
 * Local persistence for app settings and recent session summaries
+* Root-level launch scripts for visible and tray startup
+* In-app troubleshooting UI backed by a file-based diagnostics log
 
 ## Decisions made during implementation
 
@@ -73,6 +75,15 @@ Implemented behavior:
 * Optional start-with-Windows toggle through the current-user Run key
 * Compact live coaching surface with current WPM, trend, pause metrics, clarity proxy, and recent sessions
 * Commands to start monitoring, stop monitoring, hide the window, and exit the app
+* Single-instance handoff so a visible relaunch requests the existing app instance to show its window
+* Diagnostics panel in the main window with recent startup and runtime messages
+
+Additional files created during the launcher and troubleshooting pass:
+
+* `Services/AppDiagnosticsService.cs`
+* `../../Start-PaceApp.ps1`
+* `../../Start-PaceApp.cmd`
+* `../../Start-PaceApp-Tray.cmd`
 
 ### Shared contracts and models
 
@@ -144,6 +155,7 @@ Implemented behavior:
 * Load and save recent session summaries
 * Keep the state file under `%LocalAppData%\PaceApp\state.json`
 * Limit saved session history to the most recent fifty sessions
+* Write startup and troubleshooting events to `%LocalAppData%\PaceApp\diagnostics.log`
 
 ## Current project structure
 
@@ -152,6 +164,9 @@ PaceApp/
   PaceApp.slnx
   README.md
   .gitignore
+  Start-PaceApp.cmd
+  Start-PaceApp-Tray.cmd
+  Start-PaceApp.ps1
   docs/
     IMPLEMENTATION.md
   src/
@@ -171,7 +186,8 @@ The current runtime flow is straightforward.
 3. The audio layer emits normalized `AudioFrame` objects.
 4. The analytics layer converts those frames into live pacing metrics and alert states.
 5. The shell updates the overlay view model and redraws the live coaching UI.
-6. When monitoring stops, the analytics layer returns a `SessionSummary` and the infrastructure layer persists it locally.
+6. The diagnostics service records startup and troubleshooting events to a local log and surfaces recent messages in the main window.
+7. When monitoring stops, the analytics layer returns a `SessionSummary` and the infrastructure layer persists it locally.
 
 ## Validation work completed
 
@@ -190,7 +206,15 @@ dotnet build .\PaceApp.slnx
 dotnet run --project .\src\PaceApp.App\PaceApp.App.csproj
 ```
 
-The smoke test confirmed that the app starts and stays running without an immediate startup exception in the terminal.
+* Validated the supported visible launcher with:
+
+```powershell
+.\Start-PaceApp.cmd
+```
+
+The visible launcher was verified after fixing a startup XAML binding bug that originally caused the PaceApp error dialog during window creation.
+
+The diagnostics log exposed that failure clearly: a `ProgressBar` binding attempted a write-capable binding against the read-only `CurrentWpm` property. That binding was changed to explicit one-way mode, and the visible launcher now starts the app successfully.
 
 ## Known limitations in the current version
 
@@ -202,6 +226,7 @@ The current build is a strong first scaffold, but it is not the finished product
 * Device change handling uses polling rather than a richer device-notification mechanism.
 * The app has not yet been calibrated against multiple real call recordings.
 * There are no automated tests or packaging assets yet.
+* The raw `dotnet run` path for the WPF project can be less predictable than the provided root launcher because GUI app lifetime and WPF-generated-file recovery are easier to manage through the script.
 
 ## Recommended next implementation steps
 

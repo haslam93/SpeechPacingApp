@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows;
 using PaceApp.App.Services;
 using PaceApp.Core.Models;
@@ -21,6 +22,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private static readonly Brush CriticalBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(252, 165, 165)));
 
     private readonly PaceMonitorController controller;
+    private readonly AppDiagnosticsService diagnosticsService;
     private readonly StartupRegistrationService startupRegistrationService;
     private readonly AsyncRelayCommand startMonitoringCommand;
     private readonly AsyncRelayCommand stopMonitoringCommand;
@@ -45,22 +47,30 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private string statusMessage = "Ready to monitor your next Teams call.";
     private double trendWpm;
     private bool suppressSettingSave;
+    private string launchModeLabel = "Visible startup";
 
-    public MainWindowViewModel(PaceMonitorController controller, StartupRegistrationService startupRegistrationService)
+    public MainWindowViewModel(
+        PaceMonitorController controller,
+        StartupRegistrationService startupRegistrationService,
+        AppDiagnosticsService diagnosticsService)
     {
         this.controller = controller;
         this.startupRegistrationService = startupRegistrationService;
+        this.diagnosticsService = diagnosticsService;
 
         startMonitoringCommand = new AsyncRelayCommand(StartMonitoringAsync, () => !IsMonitoring && !IsBusy);
         stopMonitoringCommand = new AsyncRelayCommand(StopMonitoringAsync, () => IsMonitoring && !IsBusy);
         HideCommand = new RelayCommand(() => HideRequested?.Invoke(this, EventArgs.Empty));
         ExitCommand = new RelayCommand(() => ExitRequested?.Invoke(this, EventArgs.Empty));
+        CopyDiagnosticsCommand = new RelayCommand(CopyDiagnostics);
+        OpenDiagnosticsCommand = new RelayCommand(OpenDiagnostics);
 
         controller.SnapshotUpdated += OnSnapshotUpdated;
         controller.StatusChanged += OnStatusChanged;
         controller.SessionsUpdated += OnSessionsUpdated;
 
         RecentSessions = [];
+        DiagnosticMessages = [];
         LoadInitialState();
     }
 
@@ -70,6 +80,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<SessionSummaryItemViewModel> RecentSessions { get; }
 
+    public ObservableCollection<string> DiagnosticMessages { get; }
+
     public AsyncRelayCommand StartMonitoringCommand => startMonitoringCommand;
 
     public AsyncRelayCommand StopMonitoringCommand => stopMonitoringCommand;
@@ -77,6 +89,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public RelayCommand HideCommand { get; }
 
     public RelayCommand ExitCommand { get; }
+
+    public RelayCommand CopyDiagnosticsCommand { get; }
+
+    public RelayCommand OpenDiagnosticsCommand { get; }
 
     public bool CanCloseWindow => canCloseWindow;
 
@@ -239,6 +255,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public string SessionCountLabel => RecentSessions.Count == 0 ? "No saved sessions yet" : $"{RecentSessions.Count} recent";
 
+    public string LaunchModeLabel
+    {
+        get => launchModeLabel;
+        private set => SetProperty(ref launchModeLabel, value);
+    }
+
     public string WindowTitle => IsMonitoring ? "Pace Coach • live" : "Pace Coach";
 
     public async Task ToggleMonitoringAsync()
@@ -255,6 +277,25 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public void AllowCloseWindow()
     {
         canCloseWindow = true;
+    }
+
+    public void SetLaunchMode(string launchMode)
+    {
+        LaunchModeLabel = launchMode;
+    }
+
+    public void AppendDiagnostic(string message)
+    {
+        diagnosticsService.Write(message);
+
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            DiagnosticMessages.Add(message);
+            while (DiagnosticMessages.Count > 25)
+            {
+                DiagnosticMessages.RemoveAt(0);
+            }
+        });
     }
 
     public void Dispose()
@@ -274,6 +315,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         UpdateRecentSessions(controller.RecentSessions);
         ApplySnapshot(controller.CurrentSnapshot);
         StatusMessage = controller.CurrentSnapshot.StatusMessage;
+        foreach (var entry in diagnosticsService.GetRecentEntries())
+        {
+            DiagnosticMessages.Add(entry);
+        }
     }
 
     private async Task StartMonitoringAsync()
@@ -285,6 +330,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             await controller.StartMonitoringAsync();
             IsMonitoring = controller.IsMonitoring;
+            AppendDiagnostic(controller.IsMonitoring
+                ? "Monitoring started."
+                : "Monitoring did not start. Check microphone status above.");
         }
         finally
         {
@@ -301,6 +349,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             await controller.StopMonitoringAsync();
             IsMonitoring = controller.IsMonitoring;
+            AppendDiagnostic("Monitoring stopped.");
         }
         finally
         {
@@ -340,6 +389,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             }
 
             IsMonitoring = update.IsRunning || controller.IsMonitoring;
+            AppendDiagnostic(update.Message);
         });
     }
 
@@ -431,5 +481,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         brush.Freeze();
         return brush;
+    }
+
+    private void CopyDiagnostics()
+    {
+        var text = string.Join(Environment.NewLine, DiagnosticMessages);
+        System.Windows.Clipboard.SetText(text);
+        AppendDiagnostic("Copied diagnostics to the clipboard.");
+    }
+
+    private void OpenDiagnostics()
+    {
+        diagnosticsService.OpenLogFolder();
+        AppendDiagnostic("Opened the diagnostics log folder.");
     }
 }

@@ -33,6 +33,8 @@ The app is buildable and launches successfully on Windows with .NET 10. The firs
 
 The live speed signal is currently estimated from audio peaks and pause structure. It is useful for coaching, but it is not yet a transcript-based words-per-minute pipeline.
 
+The supported launch path is now the root-level visible launcher, `Start-PaceApp.cmd`. It builds the desktop app project, recovers from stale WPF-generated files if needed, and opens the visible PaceApp window with the current troubleshooting panel.
+
 ## Solution structure
 
 The solution is split into focused projects so the desktop shell can evolve without rewriting capture and analytics.
@@ -52,7 +54,13 @@ The solution is split into focused projects so the desktop shell can evolve with
 
 ## Build the app
 
-From the project root, run:
+For the app itself, the most reliable build path is the desktop project:
+
+```powershell
+dotnet build .\src\PaceApp.App\PaceApp.App.csproj
+```
+
+If you want to build the whole workspace, run:
 
 ```powershell
 dotnet build .\PaceApp.slnx
@@ -60,17 +68,57 @@ dotnet build .\PaceApp.slnx
 
 ## Run the app
 
-From the project root, run:
+The simplest way to launch the app with the visible Windows UI is:
+
+```powershell
+.\Start-PaceApp.cmd
+```
+
+You can also double-click [Start-PaceApp.cmd](Start-PaceApp.cmd) in File Explorer.
+
+This launcher resets any existing PaceApp process it can stop, rebuilds the desktop app if needed, and opens a fresh visible window.
+
+If you want to run it from PowerShell directly, use:
 
 ```powershell
 dotnet run --project .\src\PaceApp.App\PaceApp.App.csproj
 ```
 
-To launch the app directly into the tray, run:
+Tray launch is only for background startup. It hides the main settings window on purpose. Use it only when you explicitly want the app to start in the notification area.
+
+The simplest tray launch is:
+
+```powershell
+.\Start-PaceApp-Tray.cmd
+```
+
+If you still want the raw project command, it is:
 
 ```powershell
 dotnet run --project .\src\PaceApp.App\PaceApp.App.csproj -- --tray
 ```
+
+If you want to see settings, do not use the `--tray` switch.
+
+If you start in tray mode and do not immediately see the icon, check the Windows hidden-icons area in the notification tray.
+
+## Troubleshooting UI
+
+The main window now includes a `Troubleshooting` section.
+
+It shows:
+
+* The current launch mode
+* Recent startup and runtime diagnostic messages
+* Buttons to copy the diagnostics text or open the log file in Explorer
+
+Diagnostics are also written to:
+
+```text
+%LocalAppData%\PaceApp\diagnostics.log
+```
+
+If the visible launcher is not opening the window you expect, use `Start-PaceApp.cmd` again. It is the supported way to reset and reopen the UI.
 
 ## Use the app during a call
 
@@ -94,8 +142,11 @@ The current implementation does not upload call data and does not require a clou
 ## Key behaviors in the current build
 
 * The app prefers the Windows communications microphone, which is the right default for Teams calls.
+* The visible launcher starts a fresh PaceApp UI session and is the recommended way to open settings and diagnostics.
 * The tray icon can reopen the app, hide the window, start or stop monitoring, and exit the process.
+* Re-launching the app in visible mode signals an existing PaceApp instance to show its window instead of silently creating an extra hidden instance.
 * The `Start with Windows` option writes a per-user Run entry in the current Windows profile.
+* The main window includes a troubleshooting section with launch mode, recent diagnostic messages, and actions to copy or open the diagnostics log.
 * Session summaries include average pace, peak pace, warning-zone time, pause metrics, and a small trend history.
 
 ## Known limitations

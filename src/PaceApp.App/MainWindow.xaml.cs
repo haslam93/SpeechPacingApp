@@ -10,17 +10,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
-        Loaded += OnLoaded;
         StateChanged += OnStateChanged;
     }
 
     private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext;
-
-    private void OnLoaded(object sender, RoutedEventArgs eventArgs)
-    {
-        Left = SystemParameters.WorkArea.Right - Width - 24;
-        Top = 24;
-    }
 
     private void OnStateChanged(object? sender, EventArgs eventArgs)
     {
