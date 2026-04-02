@@ -1,0 +1,112 @@
+---
+title: PaceApp
+description: Windows desktop sidecar for monitoring speaking pace during Microsoft Teams calls and warning when the user starts speaking too fast
+author: GitHub Copilot
+ms.date: 2026-04-01
+ms.topic: overview
+keywords:
+  - windows
+  - teams
+  - speech pacing
+  - wpf
+  - audio capture
+estimated_reading_time: 6
+---
+
+## Overview
+
+PaceApp is a Windows desktop sidecar that helps you slow down on live calls. It opens the same microphone endpoint that Microsoft Teams is using, estimates your live speaking pace, and shows a compact visual warning when you start to rush.
+
+The current implementation is a local-first scaffold that focuses on the core coaching loop:
+
+* Run beside Teams as a small desktop utility
+* Capture the active communications microphone in shared mode
+* Estimate pace, pauses, clarity proxy, and trend in real time
+* Turn the live coaching surface red when pacing gets too aggressive
+* Save recent session summaries locally
+
+More detailed implementation notes live in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
+
+## Current status
+
+The app is buildable and launches successfully on Windows with .NET 10. The first version uses a WPF shell because the local machine did not have WinUI or Windows App SDK templates installed at scaffold time.
+
+The live speed signal is currently estimated from audio peaks and pause structure. It is useful for coaching, but it is not yet a transcript-based words-per-minute pipeline.
+
+## Solution structure
+
+The solution is split into focused projects so the desktop shell can evolve without rewriting capture and analytics.
+
+* `src/PaceApp.App`: WPF shell, tray behavior, overlay UI, and app orchestration
+* `src/PaceApp.Core`: shared models and service contracts
+* `src/PaceApp.Audio`: microphone capture and device monitoring
+* `src/PaceApp.Analytics`: live pace estimation and alert scoring
+* `src/PaceApp.Infrastructure`: local settings and session-history persistence
+
+## Prerequisites
+
+* Windows 10 or Windows 11
+* .NET 10 SDK
+* A working microphone
+* Microphone permission enabled for desktop apps
+
+## Build the app
+
+From the project root, run:
+
+```powershell
+dotnet build .\PaceApp.slnx
+```
+
+## Run the app
+
+From the project root, run:
+
+```powershell
+dotnet run --project .\src\PaceApp.App\PaceApp.App.csproj
+```
+
+To launch the app directly into the tray, run:
+
+```powershell
+dotnet run --project .\src\PaceApp.App\PaceApp.App.csproj -- --tray
+```
+
+## Use the app during a call
+
+1. Launch PaceApp before or at the start of your Teams call.
+2. Keep the window docked beside Teams or your demo surface.
+3. Click `Start monitoring`.
+4. Watch the live state card.
+5. When the card turns caution or red, finish the sentence and pause deliberately before continuing.
+6. Click `Stop` after the call to save the session summary.
+
+## What the app stores
+
+PaceApp stores settings and recent session summaries in a local JSON file:
+
+```text
+%LocalAppData%\PaceApp\state.json
+```
+
+The current implementation does not upload call data and does not require a cloud service to run.
+
+## Key behaviors in the current build
+
+* The app prefers the Windows communications microphone, which is the right default for Teams calls.
+* The tray icon can reopen the app, hide the window, start or stop monitoring, and exit the process.
+* The `Start with Windows` option writes a per-user Run entry in the current Windows profile.
+* Session summaries include average pace, peak pace, warning-zone time, pause metrics, and a small trend history.
+
+## Known limitations
+
+* The pace estimate is signal-based, not ASR-based, so it is an approximation.
+* There is no direct Teams integration or call-state detection yet.
+* The shell is WPF for now because WinUI scaffolding was not available locally.
+* There are no automated tests yet.
+
+## Next steps
+
+* Replace the signal-derived pace estimate with a local transcript-based words-per-minute pipeline.
+* Calibrate thresholds with real headset and laptop microphone recordings.
+* Add stronger device-change handling and more detailed diagnostics around live call scenarios.
