@@ -12,6 +12,7 @@
         Background="#09111F"
         Foreground="#F8FAFC"
         ShowInTaskbar="True"
+        Icon="Assets/PaceCoach.ico"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
@@ -137,7 +138,7 @@
 
                 <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource StatCardStyle}">
                     <StackPanel>
-                        <TextBlock Text="30s average" Foreground="#8CA3BF" FontSize="12" />
+                        <TextBlock Text="15s average" Foreground="#8CA3BF" FontSize="12" />
                         <TextBlock Text="{Binding RollingWpm, StringFormat={}{0:N0}}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" />
                     </StackPanel>
                 </Border>

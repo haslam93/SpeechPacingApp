@@ -20,6 +20,7 @@ public partial class App : System.Windows.Application
 {
 	private const string SingleInstanceMutexName = "PaceApp.SingleInstance";
 	private const string SingleInstancePipeName = "PaceApp.SingleInstancePipe";
+	private const string AppIconRelativePath = "Assets\\PaceCoach.ico";
 
 	private PaceMonitorController? controller;
 	private AppDiagnosticsService? diagnosticsService;
@@ -32,7 +33,7 @@ public partial class App : System.Windows.Application
 	private Task? singleInstanceListenerTask;
 	private bool isShutdownRequested;
 
-	protected override void OnStartup(StartupEventArgs eventArgs)
+	protected override async void OnStartup(StartupEventArgs eventArgs)
 	{
 		base.OnStartup(eventArgs);
 		diagnosticsService = new AppDiagnosticsService();
@@ -56,7 +57,8 @@ public partial class App : System.Windows.Application
 				new SignalPaceMetricsEngine(),
 				new JsonAppStateRepository());
 
-			controller.InitializeAsync().GetAwaiter().GetResult();
+			diagnosticsService.Write("Initializing application services.");
+			await controller.InitializeAsync();
 			diagnosticsService.Write("Application services initialized.");
 
 			mainWindowViewModel = new MainWindowViewModel(controller, new StartupRegistrationService(), diagnosticsService);
@@ -168,22 +170,28 @@ public partial class App : System.Windows.Application
 
 	private void SignalExistingInstance(string command)
 	{
-		try
+		for (var attempt = 0; attempt < 8; attempt++)
 		{
-			using var pipe = new NamedPipeClientStream(".", SingleInstancePipeName, PipeDirection.Out);
-			pipe.Connect(750);
-			using var writer = new StreamWriter(pipe, Encoding.UTF8)
+			try
 			{
-				AutoFlush = true,
-			};
+				using var pipe = new NamedPipeClientStream(".", SingleInstancePipeName, PipeDirection.Out);
+				pipe.Connect(350);
+				using var writer = new StreamWriter(pipe, Encoding.UTF8)
+				{
+					AutoFlush = true,
+				};
 
-			writer.WriteLine(command);
-			diagnosticsService?.Write("Sent show command to the existing PaceApp instance.");
+				writer.WriteLine(command);
+				diagnosticsService?.Write("Sent show command to the existing PaceApp instance.");
+				return;
+			}
+			catch
+			{
+				Thread.Sleep(150);
+			}
 		}
-		catch
-		{
-			diagnosticsService?.Write("Failed to signal the existing PaceApp instance.");
-		}
+
+		diagnosticsService?.Write("Failed to signal the existing PaceApp instance.");
 	}
 
 	private void InitializeTrayIcon()
@@ -201,9 +209,7 @@ public partial class App : System.Windows.Application
 		{
 			Text = "Pace Coach",
 			Visible = true,
-			Icon = !string.IsNullOrWhiteSpace(Environment.ProcessPath)
-				? DrawingIcon.ExtractAssociatedIcon(Environment.ProcessPath) ?? DrawingSystemIcons.Application
-				: DrawingSystemIcons.Application,
+			Icon = LoadAppIcon(),
 			ContextMenuStrip = contextMenu,
 		};
 
@@ -237,7 +243,7 @@ public partial class App : System.Windows.Application
 		}
 
 		eventArgs.Cancel = true;
-		HideMainWindow();
+		_ = ExitApplicationAsync();
 	}
 
 	private async Task ToggleMonitoringFromTrayAsync()
@@ -324,6 +330,21 @@ public partial class App : System.Windows.Application
 	private void OnUnhandledException(object? sender, UnhandledExceptionEventArgs eventArgs)
 	{
 		diagnosticsService?.Write($"Unhandled exception: {eventArgs.ExceptionObject}");
+	}
+
+	private static DrawingIcon LoadAppIcon()
+	{
+		var iconPath = Path.Combine(AppContext.BaseDirectory, AppIconRelativePath);
+		if (File.Exists(iconPath))
+		{
+			using var iconStream = File.OpenRead(iconPath);
+			using var sourceIcon = new DrawingIcon(iconStream);
+			return (DrawingIcon)sourceIcon.Clone();
+		}
+
+		return !string.IsNullOrWhiteSpace(Environment.ProcessPath)
+			? DrawingIcon.ExtractAssociatedIcon(Environment.ProcessPath) ?? DrawingSystemIcons.Application
+			: DrawingSystemIcons.Application;
 	}
 }
 

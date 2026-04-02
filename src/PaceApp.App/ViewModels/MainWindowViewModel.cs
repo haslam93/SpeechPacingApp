@@ -309,7 +309,17 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         suppressSettingSave = true;
         AlwaysOnTop = controller.Settings.AlwaysOnTop;
-        StartWithWindows = startupRegistrationService.IsEnabled() || controller.Settings.StartWithWindows;
+        var shouldStartWithWindows = startupRegistrationService.IsEnabled() || controller.Settings.StartWithWindows;
+        try
+        {
+            startupRegistrationService.SetEnabled(shouldStartWithWindows);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"Could not update startup registration. {exception.Message}";
+        }
+
+        StartWithWindows = shouldStartWithWindows;
         suppressSettingSave = false;
 
         UpdateRecentSessions(controller.RecentSessions);

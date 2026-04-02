@@ -26,6 +26,7 @@ The current version includes:
 * Local persistence for app settings and recent session summaries
 * Root-level launch scripts for visible and tray startup
 * In-app troubleshooting UI backed by a file-based diagnostics log
+* A self-contained published Windows build and a custom app, window, and tray icon
 
 ## Decisions made during implementation
 
@@ -71,16 +72,18 @@ Created or updated:
 Implemented behavior:
 
 * Tray icon lifecycle
-* Hide-to-tray behavior instead of closing the window
+* Explicit Hide-to-tray behavior through the `Hide` action, while the standard window close exits cleanly
 * Optional start-with-Windows toggle through the current-user Run key
 * Compact live coaching surface with current WPM, trend, pause metrics, clarity proxy, and recent sessions
 * Commands to start monitoring, stop monitoring, hide the window, and exit the app
 * Single-instance handoff so a visible relaunch requests the existing app instance to show its window
 * Diagnostics panel in the main window with recent startup and runtime messages
+* Async startup initialization so the WPF UI thread does not deadlock during app startup
 
 Additional files created during the launcher and troubleshooting pass:
 
 * `Services/AppDiagnosticsService.cs`
+* `Assets/PaceCoach.ico`
 * `../../Start-PaceApp.ps1`
 * `../../Start-PaceApp.cmd`
 * `../../Start-PaceApp-Tray.cmd`
@@ -139,6 +142,7 @@ Implemented behavior:
 * Compute a simple trend value from recent WPM history
 * Compute a clarity proxy from speed, speech density, and pause quality
 * Apply hysteresis-aware calm, caution, and critical alert states
+* Require stronger syllable-peak evidence and sustained speech before warning states activate so short or slow phrases are less likely to trigger false red alerts
 * Build a session summary at the end of monitoring
 
 ### Persistence layer
@@ -169,6 +173,8 @@ PaceApp/
   Start-PaceApp.ps1
   docs/
     IMPLEMENTATION.md
+    images/
+      pace-coach-ui.png
   src/
     PaceApp.App/
     PaceApp.Audio/
@@ -188,6 +194,16 @@ The current runtime flow is straightforward.
 5. The shell updates the overlay view model and redraws the live coaching UI.
 6. The diagnostics service records startup and troubleshooting events to a local log and surfaces recent messages in the main window.
 7. When monitoring stops, the analytics layer returns a `SessionSummary` and the infrastructure layer persists it locally.
+
+## Packaging and recent stabilization work
+
+After the first scaffold pass, the app received several operational fixes and packaging improvements.
+
+* Reworked startup so the app awaits async initialization instead of blocking the WPF UI thread.
+* Tightened the single-instance show-window handoff so a second visible launch reopens the existing window reliably.
+* Added a custom Pace Coach icon for the executable, main window, and notification tray.
+* Created a self-contained publish flow under `published\PaceCoach-win-x64` for direct double-click launching.
+* Tightened the live pace detector after a user report that slow phrases could still trigger red warnings.
 
 ## Validation work completed
 
@@ -212,6 +228,14 @@ dotnet run --project .\src\PaceApp.App\PaceApp.App.csproj
 .\Start-PaceApp.cmd
 ```
 
+* Published and launched the self-contained Windows build with:
+
+```powershell
+dotnet publish .\src\PaceApp.App\PaceApp.App.csproj -c Release -r win-x64 --self-contained true -o .\published\PaceCoach-win-x64
+```
+
+* Verified that a second visible launch reopens the existing app window instead of spawning a duplicate hidden instance.
+
 The visible launcher was verified after fixing a startup XAML binding bug that originally caused the PaceApp error dialog during window creation.
 
 The diagnostics log exposed that failure clearly: a `ProgressBar` binding attempted a write-capable binding against the read-only `CurrentWpm` property. That binding was changed to explicit one-way mode, and the visible launcher now starts the app successfully.
@@ -225,7 +249,8 @@ The current build is a strong first scaffold, but it is not the finished product
 * Teams is treated as a normal microphone consumer. There is no Teams-specific SDK integration.
 * Device change handling uses polling rather than a richer device-notification mechanism.
 * The app has not yet been calibrated against multiple real call recordings.
-* There are no automated tests or packaging assets yet.
+* There are no automated tests yet.
+* There is a generated self-contained publish folder, but there is not yet a formal installer.
 * The raw `dotnet run` path for the WPF project can be less predictable than the provided root launcher because GUI app lifetime and WPF-generated-file recovery are easier to manage through the script.
 
 ## Recommended next implementation steps
