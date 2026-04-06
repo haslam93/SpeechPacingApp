@@ -192,7 +192,37 @@ The current implementation does not upload call data and does not require a clou
 * There is no direct Teams integration or call-state detection yet.
 * The shell is WPF for now because WinUI scaffolding was not available locally.
 * There are no automated tests yet.
-* The repo does not yet include an installer. The supported distributable is the generated publish folder.
+
+## Install the app
+
+An Inno Setup installer script is included. To build the installer:
+
+1. Install [Inno Setup 6](https://jrsoftware.org/isdl.php).
+2. Run the build script:
+
+```powershell
+.\Build-Installer.ps1
+```
+
+3. The resulting `PaceCoach-Setup.exe` is created in `installer\Output\`.
+4. Double-click the setup file and follow the wizard.
+
+If you do not want to use the installer, you can run the published executable directly from `published\PaceCoach-win-x64\PaceApp.App.exe`.
+
+## Themes
+
+The app ships with three visual themes: **Dark**, **Light**, and **Midnight**. Switch themes from the settings area below the monitoring controls. The selection is saved automatically and applies instantly.
+
+## Session feedback
+
+When you click **Stop** after a monitoring session, a summary popup shows your session grade, average and peak WPM, and time spent in caution and critical zones. The grade also appears as an emoji in the recent sessions list.
+
+| Grade | Condition |
+|-------|-----------|
+| Great | Less than 15% of session in caution or critical |
+| Good | 15-30% in caution or critical |
+| Watch pace | 30-50% in caution or critical |
+| Too fast | More than 50% in caution or critical |
 
 ## Next steps
 

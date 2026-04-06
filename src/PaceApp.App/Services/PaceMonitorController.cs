@@ -67,7 +67,7 @@ public sealed class PaceMonitorController : IDisposable
         paceMetricsEngine.StartSession(Settings, microphoneCaptureService.CurrentDeviceName ?? "Communications microphone");
     }
 
-    public async Task StopMonitoringAsync(CancellationToken cancellationToken = default)
+    public async Task<SessionSummary?> StopMonitoringAsync(CancellationToken cancellationToken = default)
     {
         if (microphoneCaptureService.IsRunning)
         {
@@ -80,12 +80,13 @@ public sealed class PaceMonitorController : IDisposable
 
         if (summary is null)
         {
-            return;
+            return null;
         }
 
         await appStateRepository.SaveSessionAsync(summary, cancellationToken);
         RecentSessions = (await appStateRepository.LoadSessionsAsync(cancellationToken)).Take(12).ToList();
         SessionsUpdated?.Invoke(this, RecentSessions);
+        return summary;
     }
 
     public Task SaveSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default)

@@ -26,5 +26,7 @@ public sealed class SessionSummary
 
     public double CriticalSeconds { get; init; }
 
+    public string SessionGrade { get; init; } = "Great";
+
     public List<SessionMetricPoint> TrendPoints { get; init; } = [];
 }

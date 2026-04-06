@@ -1,0 +1,102 @@
+<Window x:Class="PaceApp.App.SessionFeedbackWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Session summary"
+        Width="360"
+        Height="400"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="#09111F"
+        Foreground="#F8FAFC"
+        ShowInTaskbar="False"
+        WindowStyle="None"
+        AllowsTransparency="True">
+    <Border CornerRadius="24"
+            Background="#0F172A"
+            BorderBrush="{Binding AccentBrush}"
+            BorderThickness="2"
+            Padding="28">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0"
+                       Text="{Binding GradeEmoji}"
+                       FontSize="48"
+                       HorizontalAlignment="Center" />
+
+            <TextBlock Grid.Row="1"
+                       Text="{Binding GradeHeadline}"
+                       FontSize="22"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Center"
+                       Margin="0,4,0,0" />
+
+            <TextBlock Grid.Row="2"
+                       Text="{Binding DurationLine}"
+                       FontSize="14"
+                       Foreground="#8CA3BF"
+                       HorizontalAlignment="Center"
+                       Margin="0,12,0,0" />
+
+            <Border Grid.Row="3"
+                    Margin="0,18,0,0"
+                    Padding="16"
+                    CornerRadius="16"
+                    Background="#172235">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="Average WPM" Foreground="#8CA3BF" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding AvgWpmText}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="Peak WPM" Foreground="#8CA3BF" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding PeakWpmText}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="Time in caution" Foreground="#FBBF24" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding CautionText}" FontWeight="SemiBold" Foreground="#FBBF24" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <DockPanel>
+                        <TextBlock Text="Time in critical" Foreground="#F87171" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding CriticalText}" FontWeight="SemiBold" Foreground="#F87171" HorizontalAlignment="Right" />
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="4"
+                       Text="{Binding Advice}"
+                       FontSize="13"
+                       Foreground="#DBEAFE"
+                       TextWrapping="Wrap"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       Margin="0,16,0,0" />
+
+            <Button Grid.Row="6"
+                    Content="Close"
+                    HorizontalAlignment="Center"
+                    Width="120"
+                    Padding="14,10"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Cursor="Hand"
+                    Click="OnCloseClick">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="#0F766E" CornerRadius="16" Padding="14,10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+        </Grid>
+    </Border>
+</Window>

@@ -24,7 +24,16 @@ public sealed class SessionSummaryItemViewModel
             ? CautionBrush
             : CalmBrush;
 
-    public string Headline => summary.EndedAt.LocalDateTime.ToString("ddd d MMM, HH:mm");
+    public string Headline => $"{GradeEmoji} {summary.EndedAt.LocalDateTime:ddd d MMM, HH:mm}";
+
+    private string GradeEmoji => summary.SessionGrade switch
+    {
+        "Great" => "🟢",
+        "Good" => "🟡",
+        "Watch pace" => "🟠",
+        "Too fast" => "🔴",
+        _ => "⚪",
+    };
 
     public string DurationLabel => $"{Math.Max(1, Math.Round((summary.EndedAt - summary.StartedAt).TotalMinutes)):N0} min";
 

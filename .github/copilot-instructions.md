@@ -87,6 +87,14 @@ After changing the source code, regenerate the published build with:
 dotnet publish .\src\PaceApp.App\PaceApp.App.csproj -c Release -r win-x64 --self-contained true -o .\published\PaceCoach-win-x64
 ```
 
+To build the installer after publishing:
+
+```powershell
+.\Build-Installer.ps1
+```
+
+The installer output is `installer\Output\PaceCoach-Setup.exe`.
+
 If you want a zip archive after publishing, create it with:
 
 ```powershell
@@ -104,3 +112,5 @@ Keep these details in mind when changing the app:
 * The `Hide` button sends the app to the tray, but the standard window close exits the process.
 * The app, window, and tray icon all come from `src/PaceApp.App/Assets/PaceCoach.ico`. Keep those references in sync if the icon changes.
 * The pacing engine in `src/PaceApp.Analytics/Services/SignalPaceMetricsEngine.cs` is approximate and sensitive to threshold changes. If you tune it, verify both fast detection and false-positive behavior.
+* Theme ResourceDictionaries live in `src/PaceApp.App/Themes/`. MainWindow.xaml uses `DynamicResource` for structural colors. Add new color keys to all three theme files when extending the UI.
+* Session grade thresholds are in `SignalPaceMetricsEngine.ComputeSessionGrade`. The feedback popup is `SessionFeedbackWindow.xaml`.

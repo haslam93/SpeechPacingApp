@@ -283,8 +283,34 @@ The current build is a strong first scaffold, but it is not the finished product
 * Device change handling uses polling rather than a richer device-notification mechanism.
 * The app has not yet been calibrated against multiple real call recordings.
 * There are no automated tests yet.
-* There is a generated self-contained publish folder, but there is not yet a formal installer.
 * The raw `dotnet run` path for the WPF project can be less predictable than the provided root launcher because GUI app lifetime and WPF-generated-file recovery are easier to manage through the script.
+
+## UI enhancements
+
+### Stat cards redesign
+
+The six stat cards were redesigned for better real-time usefulness:
+
+* **15s average** and **Trend** now show color-coded values (green, amber, red) based on alert level.
+* **Session time** replaced Pause rate to show elapsed monitoring duration.
+* **Time in zone** replaced Avg pause to show cumulative caution and critical seconds during the session.
+* **Confidence** replaced Transcript WPM to show Vosk recognition confidence.
+* **Talk ratio** shows a color-coded speech percentage.
+* All card backgrounds shift with the alert level (calm, caution, critical tints).
+
+### Session feedback popup
+
+When the user clicks Stop, a modal summary dialog shows the session grade, average and peak WPM, time in caution and critical zones, and a coaching message. The grade is computed from the percentage of session time spent in caution or critical: less than 15 percent equals Great, 15 to 30 percent equals Good, 30 to 50 percent equals Watch pace, above 50 percent equals Too fast.
+
+The grade is persisted in the session summary and shown as an emoji in the recent sessions list.
+
+### Theme support
+
+Three themes are available: Dark, Light, and Midnight. Colors are defined in ResourceDictionary files under `src/PaceApp.App/Themes/`. The MainWindow references all structural colors through `DynamicResource` bindings so themes apply instantly when switched. The selected theme is persisted in app settings.
+
+### Installer
+
+An Inno Setup script at `installer/PaceCoach.iss` packages the self-contained published build into a single `PaceCoach-Setup.exe`. The `Build-Installer.ps1` script at the repo root automates the publish-then-compile workflow. The installer creates Start Menu shortcuts, an optional Desktop shortcut, an optional Windows startup entry, and registers an uninstaller.
 
 ## Recommended next implementation steps
 

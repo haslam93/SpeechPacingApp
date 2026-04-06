@@ -22,6 +22,14 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private static readonly Brush CriticalBorderBrush = Freeze(new SolidColorBrush(Color.FromRgb(248, 113, 113)));
     private static readonly Brush CriticalBadgeBrush = Freeze(new SolidColorBrush(Color.FromRgb(252, 165, 165)));
 
+    private static readonly Brush GoodValueBrush = Freeze(new SolidColorBrush(Color.FromRgb(52, 211, 153)));
+    private static readonly Brush WarnValueBrush = Freeze(new SolidColorBrush(Color.FromRgb(251, 191, 36)));
+    private static readonly Brush BadValueBrush = Freeze(new SolidColorBrush(Color.FromRgb(248, 113, 113)));
+    private static readonly Brush NeutralValueBrush = Freeze(new SolidColorBrush(Color.FromRgb(248, 250, 252)));
+    private static readonly Brush CardCalmBrush = Freeze(new SolidColorBrush(Color.FromRgb(15, 23, 42)));
+    private static readonly Brush CardCautionBrush = Freeze(new SolidColorBrush(Color.FromRgb(30, 25, 10)));
+    private static readonly Brush CardCriticalBrush = Freeze(new SolidColorBrush(Color.FromRgb(35, 15, 18)));
+
     private readonly PaceMonitorController controller;
     private readonly AppDiagnosticsService diagnosticsService;
     private readonly StartupRegistrationService startupRegistrationService;
@@ -54,6 +62,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private bool isRecordingAccuracy;
     private DateTimeOffset monitoringStartTime;
     private string monitoringButtonLabel = "▶  Start monitoring";
+    private string sessionElapsedLabel = "0:00";
+    private string timeInZoneLabel = "—";
+    private string confidenceLabel = "—";
+    private Brush rollingWpmForeground = NeutralValueBrush;
+    private Brush trendForeground = NeutralValueBrush;
+    private Brush talkRatioForeground = NeutralValueBrush;
+    private Brush confidenceForeground = NeutralValueBrush;
+    private Brush statCardBackgroundBrush = CardCalmBrush;
+    private double cautionAccumulatedSeconds;
+    private double criticalAccumulatedSeconds;
+    private System.Windows.Threading.DispatcherTimer? sessionTimer;
+    private PaceAlertLevel currentAlertLevel = PaceAlertLevel.Calm;
+    private string selectedTheme = "Dark";
+
+    private static readonly string[] themeOptions = ["Dark", "Light", "Midnight"];
 
     public MainWindowViewModel(
         PaceMonitorController controller,
@@ -303,6 +326,69 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref launchModeLabel, value);
     }
 
+    public string SessionElapsedLabel
+    {
+        get => sessionElapsedLabel;
+        private set => SetProperty(ref sessionElapsedLabel, value);
+    }
+
+    public string TimeInZoneLabel
+    {
+        get => timeInZoneLabel;
+        private set => SetProperty(ref timeInZoneLabel, value);
+    }
+
+    public string ConfidenceLabel
+    {
+        get => confidenceLabel;
+        private set => SetProperty(ref confidenceLabel, value);
+    }
+
+    public Brush RollingWpmForeground
+    {
+        get => rollingWpmForeground;
+        private set => SetProperty(ref rollingWpmForeground, value);
+    }
+
+    public Brush TrendForeground
+    {
+        get => trendForeground;
+        private set => SetProperty(ref trendForeground, value);
+    }
+
+    public Brush TalkRatioForeground
+    {
+        get => talkRatioForeground;
+        private set => SetProperty(ref talkRatioForeground, value);
+    }
+
+    public Brush ConfidenceForeground
+    {
+        get => confidenceForeground;
+        private set => SetProperty(ref confidenceForeground, value);
+    }
+
+    public Brush StatCardBackgroundBrush
+    {
+        get => statCardBackgroundBrush;
+        private set => SetProperty(ref statCardBackgroundBrush, value);
+    }
+
+    public string[] ThemeOptions => themeOptions;
+
+    public string SelectedTheme
+    {
+        get => selectedTheme;
+        set
+        {
+            if (SetProperty(ref selectedTheme, value) && !suppressSettingSave)
+            {
+                ApplyTheme(value);
+                _ = PersistSettingsAsync();
+            }
+        }
+    }
+
     public string WindowTitle => IsMonitoring ? "Pace Coach • live" : "Pace Coach";
 
     public async Task ToggleMonitoringAsync()
@@ -345,6 +431,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         controller.SnapshotUpdated -= OnSnapshotUpdated;
         controller.StatusChanged -= OnStatusChanged;
         controller.SessionsUpdated -= OnSessionsUpdated;
+        sessionTimer?.Stop();
+        sessionTimer = null;
         accuracyLogService.Stop();
     }
 
@@ -352,6 +440,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         suppressSettingSave = true;
         AlwaysOnTop = controller.Settings.AlwaysOnTop;
+        SelectedTheme = themeOptions.Contains(controller.Settings.ThemeName) ? controller.Settings.ThemeName : "Dark";
         var shouldStartWithWindows = startupRegistrationService.IsEnabled() || controller.Settings.StartWithWindows;
         try
         {
@@ -365,6 +454,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         StartWithWindows = shouldStartWithWindows;
         suppressSettingSave = false;
 
+        ApplyTheme(SelectedTheme);
         UpdateRecentSessions(controller.RecentSessions);
         ApplySnapshot(controller.CurrentSnapshot);
         StatusMessage = controller.CurrentSnapshot.StatusMessage;
@@ -382,6 +472,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         try
         {
             monitoringStartTime = DateTimeOffset.UtcNow;
+            cautionAccumulatedSeconds = 0;
+            criticalAccumulatedSeconds = 0;
+            currentAlertLevel = PaceAlertLevel.Calm;
+            SessionElapsedLabel = "0:00";
+            TimeInZoneLabel = "—";
+            ConfidenceLabel = "—";
+            sessionTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            sessionTimer.Tick += OnSessionTimerTick;
+            sessionTimer.Start();
             await controller.StartMonitoringAsync();
             IsMonitoring = controller.IsMonitoring;
             MonitoringButtonLabel = controller.IsMonitoring ? "🎙  Listening..." : "▶  Start monitoring";
@@ -402,10 +501,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         try
         {
-            await controller.StopMonitoringAsync();
+            sessionTimer?.Stop();
+            sessionTimer = null;
+            var summary = await controller.StopMonitoringAsync();
             IsMonitoring = controller.IsMonitoring;
             MonitoringButtonLabel = "▶  Start monitoring";
             AppendDiagnostic("Monitoring stopped.");
+
+            if (summary is not null)
+            {
+                var feedbackWindow = new SessionFeedbackWindow(summary)
+                {
+                    Owner = System.Windows.Application.Current.MainWindow,
+                };
+                feedbackWindow.ShowDialog();
+            }
         }
         finally
         {
@@ -418,9 +528,28 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var updated = controller.Settings.Clone();
         updated.AlwaysOnTop = AlwaysOnTop;
         updated.StartWithWindows = StartWithWindows;
+        updated.ThemeName = SelectedTheme;
 
         await controller.SaveSettingsAsync(updated);
         OnPropertyChanged(nameof(ThresholdSummary));
+    }
+
+    private static void ApplyTheme(string themeName)
+    {
+        var themeFile = themeName switch
+        {
+            "Light" => "Themes/LightTheme.xaml",
+            "Midnight" => "Themes/MidnightTheme.xaml",
+            _ => "Themes/DarkTheme.xaml",
+        };
+
+        var app = System.Windows.Application.Current;
+        var merged = app.Resources.MergedDictionaries;
+        merged.Clear();
+        merged.Add(new System.Windows.ResourceDictionary
+        {
+            Source = new Uri(themeFile, UriKind.Relative),
+        });
     }
 
     private void OnSnapshotUpdated(object? sender, LivePaceSnapshot snapshot)
@@ -467,10 +596,93 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         PaceNarrative = BuildNarrative(snapshot);
         ApplyAlertPalette(snapshot.AlertLevel);
 
+        currentAlertLevel = snapshot.AlertLevel;
+
+        ConfidenceLabel = snapshot.EnglishConfidence.HasValue
+            ? $"{snapshot.EnglishConfidence.Value * 100:N0}%"
+            : "—";
+
+        RollingWpmForeground = snapshot.AlertLevel switch
+        {
+            PaceAlertLevel.Critical => BadValueBrush,
+            PaceAlertLevel.Caution => WarnValueBrush,
+            _ => GoodValueBrush,
+        };
+
+        TrendForeground = TrendWpm switch
+        {
+            > 3 => BadValueBrush,
+            < -3 => GoodValueBrush,
+            _ => NeutralValueBrush,
+        };
+
+        TalkRatioForeground = snapshot.SpeechRatio switch
+        {
+            >= 0.4 and <= 0.7 => GoodValueBrush,
+            > 0.85 or < 0.2 => WarnValueBrush,
+            _ => NeutralValueBrush,
+        };
+
+        ConfidenceForeground = snapshot.EnglishConfidence switch
+        {
+            >= 0.7 => GoodValueBrush,
+            >= 0.4 => WarnValueBrush,
+            not null => BadValueBrush,
+            _ => NeutralValueBrush,
+        };
+
+        StatCardBackgroundBrush = snapshot.AlertLevel switch
+        {
+            PaceAlertLevel.Critical => CardCriticalBrush,
+            PaceAlertLevel.Caution => CardCautionBrush,
+            _ => System.Windows.Application.Current.TryFindResource("CardBackground") as Brush ?? CardCalmBrush,
+        };
+
         if (accuracyLogService.IsRecording)
         {
             accuracyLogService.RecordSnapshot(snapshot, monitoringStartTime, snapshot.TranscriptWordsPerMinute);
         }
+    }
+
+    private void OnSessionTimerTick(object? sender, EventArgs e)
+    {
+        var elapsed = DateTimeOffset.UtcNow - monitoringStartTime;
+        SessionElapsedLabel = elapsed.TotalHours >= 1
+            ? $"{(int)elapsed.TotalHours}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}"
+            : $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:D2}";
+
+        if (currentAlertLevel == PaceAlertLevel.Caution)
+        {
+            cautionAccumulatedSeconds += 1;
+        }
+        else if (currentAlertLevel == PaceAlertLevel.Critical)
+        {
+            criticalAccumulatedSeconds += 1;
+        }
+
+        UpdateTimeInZoneLabel();
+    }
+
+    private void UpdateTimeInZoneLabel()
+    {
+        if (cautionAccumulatedSeconds == 0 && criticalAccumulatedSeconds == 0)
+        {
+            TimeInZoneLabel = "All clear ✅";
+            return;
+        }
+
+        var parts = new List<string>();
+        if (criticalAccumulatedSeconds > 0)
+        {
+            parts.Add($"🔴 {criticalAccumulatedSeconds:N0}s");
+        }
+
+        if (cautionAccumulatedSeconds > 0)
+        {
+            parts.Add($"🟡 {cautionAccumulatedSeconds:N0}s");
+        }
+
+        TimeInZoneLabel = string.Join(" · ", parts);
     }
 
     private void ApplyAlertPalette(PaceAlertLevel alertLevel)

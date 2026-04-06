@@ -9,8 +9,8 @@
         Height="860"
         MinWidth="360"
         MinHeight="700"
-        Background="#09111F"
-        Foreground="#F8FAFC"
+        Background="{DynamicResource AppBackground}"
+        Foreground="{DynamicResource AppForeground}"
         ShowInTaskbar="True"
         Icon="Assets/PaceCoach.ico"
         WindowStartupLocation="CenterScreen">
@@ -40,14 +40,14 @@
         </Style>
 
         <Style x:Key="QuietButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-            <Setter Property="Background" Value="#101B2D" />
-            <Setter Property="BorderBrush" Value="#22324A" />
-            <Setter Property="Foreground" Value="#DCE6F4" />
+            <Setter Property="Background" Value="{DynamicResource QuietButtonBg}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource QuietButtonBorder}" />
+            <Setter Property="Foreground" Value="{DynamicResource QuietButtonFg}" />
         </Style>
 
         <Style x:Key="StatCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="#0F172A" />
-            <Setter Property="BorderBrush" Value="#1E293B" />
+            <Setter Property="Background" Value="{DynamicResource CardBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="18" />
             <Setter Property="Padding" Value="14" />
@@ -69,7 +69,7 @@
             <DockPanel>
                 <StackPanel DockPanel.Dock="Left">
                     <TextBlock Text="🏃 Pace Coach" FontSize="27" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding DeviceName}" Margin="0,4,0,0" Foreground="#8CA3BF" />
+                    <TextBlock Text="{Binding DeviceName}" Margin="0,4,0,0" Foreground="{DynamicResource SecondaryText}" />
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
@@ -106,7 +106,7 @@
 
                     <StackPanel Grid.Row="1" Margin="0,16,0,0">
                         <TextBlock Text="{Binding CurrentWpm, StringFormat={}{0:N0}}" FontSize="66" FontWeight="Bold" />
-                        <TextBlock Text="Estimated WPM" Margin="0,-8,0,0" FontSize="14" Foreground="#CBD5E1" />
+                        <TextBlock Text="Estimated WPM" Margin="0,-8,0,0" FontSize="14" Foreground="{DynamicResource SubtleText}" />
                     </StackPanel>
 
                     <ProgressBar Grid.Row="2"
@@ -114,13 +114,13 @@
                                  Height="10"
                                  Maximum="220"
                                  Value="{Binding CurrentWpm, Mode=OneWay}"
-                                 Background="#172235"
+                                 Background="{DynamicResource ProgressTrack}"
                                  Foreground="{Binding AlertBorderBrush}" />
 
                     <TextBlock Grid.Row="3"
                                Margin="0,14,0,0"
                                Text="{Binding PaceNarrative}"
-                               Foreground="#DBEAFE"
+                               Foreground="{DynamicResource NarrativeText}"
                                TextWrapping="Wrap" />
                 </Grid>
             </Border>
@@ -136,45 +136,45 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource StatCardStyle}">
+                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource StatCardStyle}" Background="{Binding StatCardBackgroundBrush}">
                     <StackPanel>
-                        <TextBlock Text="📈 15s average" Foreground="#8CA3BF" FontSize="12" />
-                        <TextBlock Text="{Binding RollingWpm, StringFormat={}{0:N0}}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="📈 15s average" Foreground="{DynamicResource SecondaryText}" FontSize="12" />
+                        <TextBlock Text="{Binding RollingWpm, StringFormat={}{0:N0}}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" Foreground="{Binding RollingWpmForeground}" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource StatCardStyle}" Margin="10,0,0,10">
+                <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource StatCardStyle}" Background="{Binding StatCardBackgroundBrush}" Margin="10,0,0,10">
                     <StackPanel>
-                        <TextBlock Text="📉 Trend" Foreground="#8CA3BF" FontSize="12" />
-                        <TextBlock Text="{Binding TrendLabel}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="📉 Trend" Foreground="{DynamicResource SecondaryText}" FontSize="12" />
+                        <TextBlock Text="{Binding TrendLabel}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{Binding TrendForeground}" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource StatCardStyle}">
+                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource StatCardStyle}" Background="{Binding StatCardBackgroundBrush}">
                     <StackPanel>
-                        <TextBlock Text="⏸ Pause rate" Foreground="#8CA3BF" FontSize="12" />
-                        <TextBlock Text="{Binding PauseRatePerMinute, StringFormat={}{0:N1}/min}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="⏱ Session time" Foreground="{DynamicResource SecondaryText}" FontSize="12" />
+                        <TextBlock Text="{Binding SessionElapsedLabel}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource StatCardStyle}" Margin="10,0,0,10">
+                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource StatCardStyle}" Background="{Binding StatCardBackgroundBrush}" Margin="10,0,0,10">
                     <StackPanel>
-                        <TextBlock Text="⏱ Avg pause" Foreground="#8CA3BF" FontSize="12" />
-                        <TextBlock Text="{Binding AveragePauseMilliseconds, StringFormat={}{0:N0} ms}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="🔥 Time in zone" Foreground="{DynamicResource SecondaryText}" FontSize="12" />
+                        <TextBlock Text="{Binding TimeInZoneLabel}" Margin="0,8,0,0" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource StatCardStyle}">
+                <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource StatCardStyle}" Background="{Binding StatCardBackgroundBrush}">
                     <StackPanel>
-                        <TextBlock Text="🎙 Transcript WPM" Foreground="#8CA3BF" FontSize="12" />
-                        <TextBlock Text="{Binding TranscriptWpm, StringFormat={}{0:N0}}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="🎯 Confidence" Foreground="{DynamicResource SecondaryText}" FontSize="12" />
+                        <TextBlock Text="{Binding ConfidenceLabel}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" Foreground="{Binding ConfidenceForeground}" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource StatCardStyle}" Margin="10,0,0,10">
+                <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource StatCardStyle}" Background="{Binding StatCardBackgroundBrush}" Margin="10,0,0,10">
                     <StackPanel>
-                        <TextBlock Text="🗣 Talk ratio" Foreground="#8CA3BF" FontSize="12" />
-                        <TextBlock Text="{Binding SpeechRatioPercent, StringFormat={}{0:N0}%}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock Text="🗣 Talk ratio" Foreground="{DynamicResource SecondaryText}" FontSize="12" />
+                        <TextBlock Text="{Binding SpeechRatioPercent, StringFormat={}{0:N0}%}" Margin="0,8,0,0" FontSize="28" FontWeight="SemiBold" Foreground="{Binding TalkRatioForeground}" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -185,15 +185,25 @@
                     <Button Content="⏹  Stop" Command="{Binding StopMonitoringCommand}" Style="{StaticResource QuietButtonStyle}" Width="100" />
                 </StackPanel>
 
-                <TextBlock Margin="0,10,0,0" Foreground="#8CA3BF" Text="{Binding ThresholdSummary}" TextWrapping="Wrap" />
+                <TextBlock Margin="0,10,0,0" Foreground="{DynamicResource SecondaryText}" Text="{Binding ThresholdSummary}" TextWrapping="Wrap" />
 
                 <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                    <CheckBox Content="Always on top" IsChecked="{Binding AlwaysOnTop}" Foreground="#DCE6F4" VerticalAlignment="Center" />
-                    <CheckBox Content="Start with Windows" IsChecked="{Binding StartWithWindows}" Margin="18,0,0,0" Foreground="#DCE6F4" VerticalAlignment="Center" />
+                    <CheckBox Content="Always on top" IsChecked="{Binding AlwaysOnTop}" Foreground="{DynamicResource QuietButtonFg}" VerticalAlignment="Center" />
+                    <CheckBox Content="Start with Windows" IsChecked="{Binding StartWithWindows}" Margin="18,0,0,0" Foreground="{DynamicResource QuietButtonFg}" VerticalAlignment="Center" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                    <CheckBox Content="Record accuracy log" IsChecked="{Binding IsRecordingAccuracy}" Foreground="#DCE6F4" VerticalAlignment="Center" />
+                    <TextBlock Text="Theme" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" />
+                    <ComboBox ItemsSource="{Binding ThemeOptions}"
+                              SelectedItem="{Binding SelectedTheme}"
+                              Margin="10,0,0,0"
+                              Width="120"
+                              Foreground="{DynamicResource AppForeground}"
+                              Background="{DynamicResource CardBackground}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <CheckBox Content="Record accuracy log" IsChecked="{Binding IsRecordingAccuracy}" Foreground="{DynamicResource QuietButtonFg}" VerticalAlignment="Center" />
                     <Button Content="Open log folder"
                             Command="{Binding OpenAccuracyLogCommand}"
                             Style="{StaticResource QuietButtonStyle}"
@@ -207,8 +217,8 @@
                     Margin="0,18,0,0"
                     Padding="14"
                     CornerRadius="18"
-                    Background="#0F172A"
-                    BorderBrush="#243247"
+                    Background="{DynamicResource PanelBackground}"
+                    BorderBrush="{DynamicResource PanelBorder}"
                     BorderThickness="1">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -234,15 +244,15 @@
 
                     <TextBlock Grid.Row="1"
                                Margin="0,8,0,0"
-                               Foreground="#8CA3BF"
+                               Foreground="{DynamicResource SecondaryText}"
                                Text="{Binding LaunchModeLabel}" />
 
                     <Border Grid.Row="2"
                             Margin="0,12,0,0"
                             Height="150"
                             CornerRadius="12"
-                            Background="#09111F"
-                            BorderBrush="#1E293B"
+                            Background="{DynamicResource ScrollBackground}"
+                            BorderBrush="{DynamicResource CardBorder}"
                             BorderThickness="1">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding DiagnosticMessages}">
@@ -250,7 +260,7 @@
                                     <DataTemplate>
                                         <TextBlock Text="{Binding}"
                                                    Margin="10,6,10,0"
-                                                   Foreground="#CBD5E1"
+                                                   Foreground="{DynamicResource SubtleText}"
                                                    FontSize="12"
                                                    TextWrapping="Wrap" />
                                     </DataTemplate>
@@ -269,7 +279,7 @@
 
                 <DockPanel Grid.Row="0">
                     <TextBlock Text="Recent sessions" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock DockPanel.Dock="Right" Text="{Binding SessionCountLabel}" Foreground="#8CA3BF" Margin="12,3,0,0" />
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding SessionCountLabel}" Foreground="{DynamicResource SecondaryText}" Margin="12,3,0,0" />
                 </DockPanel>
 
                 <ScrollViewer Grid.Row="1" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
@@ -279,16 +289,16 @@
                                 <Border Padding="14"
                                         Margin="0,0,0,10"
                                         CornerRadius="18"
-                                        Background="#101827"
+                                        Background="{DynamicResource SessionItemBg}"
                                         BorderBrush="{Binding AccentBrush}"
                                         BorderThickness="1">
                                     <StackPanel>
                                         <DockPanel>
                                             <TextBlock Text="{Binding Headline}" FontWeight="SemiBold" />
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding DurationLabel}" Foreground="#8CA3BF" />
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding DurationLabel}" Foreground="{DynamicResource SecondaryText}" />
                                         </DockPanel>
                                         <TextBlock Margin="0,6,0,0" Text="{Binding Summary}" TextWrapping="Wrap" />
-                                        <TextBlock Margin="0,4,0,0" Text="{Binding Detail}" Foreground="#8CA3BF" TextWrapping="Wrap" />
+                                        <TextBlock Margin="0,4,0,0" Text="{Binding Detail}" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" />
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>

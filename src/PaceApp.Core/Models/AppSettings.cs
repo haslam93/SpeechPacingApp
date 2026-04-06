@@ -21,6 +21,8 @@ public sealed class AppSettings
 
     public double MinimumPauseMilliseconds { get; set; } = 320;
 
+    public string ThemeName { get; set; } = "Dark";
+
     public bool UsesLegacyDefaultPaceBand() =>
         TargetWordsPerMinute == 135
         && CautionWordsPerMinute == 165
@@ -44,5 +46,6 @@ public sealed class AppSettings
         CriticalWordsPerMinute = CriticalWordsPerMinute,
         HysteresisWordsPerMinute = HysteresisWordsPerMinute,
         MinimumPauseMilliseconds = MinimumPauseMilliseconds,
+        ThemeName = ThemeName,
     };
 }

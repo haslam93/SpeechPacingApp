@@ -166,6 +166,7 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
                 PauseRatePerMinute = pauseRate,
                 CautionSeconds = cautionSeconds,
                 CriticalSeconds = criticalSeconds,
+                SessionGrade = ComputeSessionGrade(cautionSeconds, criticalSeconds, (endedAt - sessionStartedAt).TotalSeconds),
                 TrendPoints = [.. trendPoints],
             };
 
@@ -689,5 +690,22 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
         return previousValue <= 0
             ? nextValue
             : (previousValue * (1 - alpha)) + (nextValue * alpha);
+    }
+
+    private static string ComputeSessionGrade(double cautionSec, double criticalSec, double totalSec)
+    {
+        if (totalSec <= 0)
+        {
+            return "Great";
+        }
+
+        var alertPercent = (cautionSec + criticalSec) / totalSec * 100;
+        return alertPercent switch
+        {
+            < 15 => "Great",
+            < 30 => "Good",
+            < 50 => "Watch pace",
+            _ => "Too fast",
+        };
     }
 }

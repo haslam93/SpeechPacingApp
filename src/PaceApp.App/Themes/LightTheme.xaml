@@ -1,0 +1,18 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="AppBackground" Color="#F8FAFC" />
+    <SolidColorBrush x:Key="AppForeground" Color="#0F172A" />
+    <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="CardBorder" Color="#E2E8F0" />
+    <SolidColorBrush x:Key="SecondaryText" Color="#64748B" />
+    <SolidColorBrush x:Key="SubtleText" Color="#475569" />
+    <SolidColorBrush x:Key="NarrativeText" Color="#1E3A5F" />
+    <SolidColorBrush x:Key="ProgressTrack" Color="#E2E8F0" />
+    <SolidColorBrush x:Key="PanelBackground" Color="#F1F5F9" />
+    <SolidColorBrush x:Key="PanelBorder" Color="#CBD5E1" />
+    <SolidColorBrush x:Key="QuietButtonBg" Color="#E2E8F0" />
+    <SolidColorBrush x:Key="QuietButtonBorder" Color="#CBD5E1" />
+    <SolidColorBrush x:Key="QuietButtonFg" Color="#334155" />
+    <SolidColorBrush x:Key="SessionItemBg" Color="#F1F5F9" />
+    <SolidColorBrush x:Key="ScrollBackground" Color="#FFFFFF" />
+</ResourceDictionary>
