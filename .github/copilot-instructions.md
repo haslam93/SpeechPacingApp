@@ -2,7 +2,7 @@
 title: PaceApp Copilot Instructions
 description: Workspace guidance for making source changes in PaceApp, locating the published output, and republishing the Windows app after edits
 author: GitHub Copilot
-ms.date: 2026-04-01
+ms.date: 2026-04-06
 ms.topic: reference
 keywords:
   - copilot
@@ -15,7 +15,7 @@ estimated_reading_time: 5
 
 ## Project overview
 
-PaceApp is a Windows desktop sidecar that monitors speaking pace during Teams calls. The current shell is WPF on .NET 10. Audio capture uses NAudio and WASAPI shared mode. Live pacing is currently signal-derived, not transcript-derived.
+PaceApp is a Windows desktop sidecar that monitors speaking pace during Teams calls. The current shell is WPF on .NET 10. Audio capture uses NAudio and WASAPI shared mode. Live pacing uses Vosk offline speech recognition for transcript-backed WPM with word-level timing, falling back to signal-derived estimation when Vosk is unavailable.
 
 ## Source layout
 

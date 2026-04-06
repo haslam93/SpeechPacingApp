@@ -2,19 +2,38 @@ namespace PaceApp.Core.Models;
 
 public sealed class AppSettings
 {
+    public const double RecommendedTargetWordsPerMinute = 140;
+    public const double RecommendedCautionWordsPerMinute = 170;
+    public const double RecommendedCriticalWordsPerMinute = 195;
+    public const double RecommendedHysteresisWordsPerMinute = 10;
+
     public bool StartWithWindows { get; set; }
 
     public bool AlwaysOnTop { get; set; } = true;
 
-    public double TargetWordsPerMinute { get; set; } = 135;
+    public double TargetWordsPerMinute { get; set; } = RecommendedTargetWordsPerMinute;
 
-    public double CautionWordsPerMinute { get; set; } = 165;
+    public double CautionWordsPerMinute { get; set; } = RecommendedCautionWordsPerMinute;
 
-    public double CriticalWordsPerMinute { get; set; } = 190;
+    public double CriticalWordsPerMinute { get; set; } = RecommendedCriticalWordsPerMinute;
 
-    public double HysteresisWordsPerMinute { get; set; } = 8;
+    public double HysteresisWordsPerMinute { get; set; } = RecommendedHysteresisWordsPerMinute;
 
     public double MinimumPauseMilliseconds { get; set; } = 320;
+
+    public bool UsesLegacyDefaultPaceBand() =>
+        TargetWordsPerMinute == 135
+        && CautionWordsPerMinute == 165
+        && CriticalWordsPerMinute == 190
+        && HysteresisWordsPerMinute == 8;
+
+    public void ApplyRecommendedPaceBand()
+    {
+        TargetWordsPerMinute = RecommendedTargetWordsPerMinute;
+        CautionWordsPerMinute = RecommendedCautionWordsPerMinute;
+        CriticalWordsPerMinute = RecommendedCriticalWordsPerMinute;
+        HysteresisWordsPerMinute = RecommendedHysteresisWordsPerMinute;
+    }
 
     public AppSettings Clone() => new()
     {

@@ -5,19 +5,28 @@ namespace PaceApp.Analytics.Services;
 
 public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
 {
-    private static readonly TimeSpan LiveWpmWindow = TimeSpan.FromSeconds(6);
-    private static readonly TimeSpan RollingWpmWindow = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan SpeechRatioWindow = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan PauseWindow = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan TrendLookbackWindow = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan LiveWpmWindow = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan RollingWpmWindow = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan SpeechRatioWindow = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan PauseWindow = TimeSpan.FromSeconds(25);
+    private static readonly TimeSpan TrendLookbackWindow = TimeSpan.FromSeconds(8);
     private const double SyllablesPerWord = 1.55;
-    private const double MinimumPeakGapMilliseconds = 160;
-    private const double MinimumResponsiveSpeechSeconds = 1.6;
-    private const int MinimumResponsivePeakCount = 4;
-    private const double MinimumAlertSpeechSeconds = 2.4;
-    private const int MinimumAlertPeakCount = 6;
+    private const double MinimumPeakGapMilliseconds = 190;
+    private const double MinimumBridgeSpeechSeconds = 0.6;
+    private const int MinimumBridgePeakCount = 2;
+    private const double MinimumResponsiveSpeechSeconds = 2.0;
+    private const int MinimumResponsivePeakCount = 5;
+    private const double MinimumRollingSpeechSeconds = 2.5;
+    private const double MinimumAlertSpeechSeconds = 1.2;
+    private const int MinimumAlertPeakCount = 3;
+    private const double MaximumPlausibleWordsPerMinute = 250;
+    private const int MinimumTranscriptCurrentWords = 2;
+    private const double MinimumTranscriptCurrentSpeechSeconds = 0.5;
+    private const int MinimumTranscriptRollingWords = 3;
+    private const double MinimumTranscriptRollingSpeechSeconds = 1.5;
 
     private readonly object syncRoot = new();
+    private readonly ITranscriptMetricsSource? transcriptMetricsSource;
     private readonly Queue<DateTimeOffset> syllablePeaks = new();
     private readonly Queue<(DateTimeOffset Timestamp, double DurationMs)> pauses = new();
     private readonly Queue<(DateTimeOffset Timestamp, double DurationSeconds, bool IsSpeech, double SignalLevel)> chunks = new();
@@ -46,8 +55,20 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
     private bool envelopeRising;
     private bool peakReady = true;
     private double noiseFloor = 0.004;
+    private double smoothedCurrentWpm;
+    private double smoothedRollingWpm;
 
     public event EventHandler<LivePaceSnapshot>? SnapshotUpdated;
+
+    public SignalPaceMetricsEngine(bool enableTranscriptRecognition = true)
+        : this(enableTranscriptRecognition ? new VoskTranscriptAnalyzer() : null)
+    {
+    }
+
+    public SignalPaceMetricsEngine(ITranscriptMetricsSource? transcriptMetricsSource)
+    {
+        this.transcriptMetricsSource = transcriptMetricsSource;
+    }
 
     public LivePaceSnapshot CurrentSnapshot
     {
@@ -85,17 +106,25 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
             envelopeRising = false;
             peakReady = true;
             noiseFloor = 0.004;
+            smoothedCurrentWpm = 0;
+            smoothedRollingWpm = 0;
             syllablePeaks.Clear();
             pauses.Clear();
             chunks.Clear();
             wpmHistory.Clear();
             trendPoints.Clear();
 
+            var statusMessage = transcriptMetricsSource is not null
+                ? (transcriptMetricsSource.TryStartLive()
+                    ? "Listening for speech. Live WPM starts from audio first and tightens once transcript timing catches up."
+                    : "Local speech recognition unavailable. Using audio-only pace estimation.")
+                : "Listening for enough speech before estimating your pace.";
+
             currentSnapshot = new LivePaceSnapshot
             {
                 IsMonitoring = true,
                 DeviceName = deviceName,
-                StatusMessage = "Listening for your pace...",
+                StatusMessage = statusMessage,
             };
         }
 
@@ -106,6 +135,11 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
     {
         lock (syncRoot)
         {
+            if (transcriptMetricsSource is not null)
+            {
+                transcriptMetricsSource.Stop();
+            }
+
             if (!isMonitoring)
             {
                 currentSnapshot = LivePaceSnapshot.Idle("Monitoring paused.");
@@ -176,17 +210,82 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
             chunks.Enqueue((now, chunkDurationSeconds, isSpeech, rms));
             TrimQueues(now);
 
-            var currentWpm = EstimateResponsiveWordsPerMinute(now, LiveWpmWindow);
-            var averageWpm = EstimateRollingWordsPerMinute(now, RollingWpmWindow);
-            wpmHistory.Enqueue((now, currentWpm));
-            TrimHistory(now);
-
+            var rawSignalBridgeWpm = EstimateResponsiveWordsPerMinute(
+                now,
+                LiveWpmWindow,
+                MinimumBridgeSpeechSeconds,
+                MinimumBridgePeakCount,
+                1.5);
+            var rawSignalStableWpm = EstimateResponsiveWordsPerMinute(
+                now,
+                LiveWpmWindow,
+                MinimumResponsiveSpeechSeconds,
+                MinimumResponsivePeakCount,
+                2.5);
+            var signalHasStableEstimate = rawSignalStableWpm > 0;
+            var rawSignalCurrentWpm = signalHasStableEstimate
+                ? rawSignalStableWpm
+                : rawSignalBridgeWpm;
+            var rawSignalAverageWpm = EstimateRollingWordsPerMinute(now, RollingWpmWindow);
             var speechRatio = GetSpeechRatio(now, SpeechRatioWindow);
             var pauseRate = GetPauseRate(now, PauseWindow);
             var averagePause = GetAveragePause(now, PauseWindow);
+
+            transcriptMetricsSource?.FeedAudio(frame.Samples, frame.SampleRate);
+
+            var transcriptMetrics = transcriptMetricsSource is not null
+                ? transcriptMetricsSource.GetMetrics(
+                    now,
+                    LiveWpmWindow,
+                    RollingWpmWindow,
+                    MinimumTranscriptCurrentWords,
+                    MinimumTranscriptCurrentSpeechSeconds,
+                    MinimumTranscriptRollingWords,
+                    MinimumTranscriptRollingSpeechSeconds)
+                : TranscriptMetricsSnapshot.Unavailable("Using audio-only pace estimation.");
+
+            var useTranscriptEstimate = transcriptMetrics.IsAvailable && transcriptMetrics.HasStableEstimate;
+
+            // When transcript recognition is available, use its WPM — it measures
+            // actual words and timing, which is more accurate than audio peak counting.
+            // Use signal only as a fallback when transcript hasn't stabilized yet.
+            var rawCurrentWpm = useTranscriptEstimate
+                ? transcriptMetrics.CurrentWordsPerMinute
+                : rawSignalCurrentWpm;
+            var rawAverageWpm = useTranscriptEstimate && transcriptMetrics.RollingWordsPerMinute > 0
+                ? transcriptMetrics.RollingWordsPerMinute
+                : rawSignalAverageWpm;
+
+            // Asymmetric smoothing: rise fast, fall gradually.
+            var isRising = rawCurrentWpm > smoothedCurrentWpm;
+            var currentAlpha = isRising ? 0.55 : 0.25;
+
+            // Urgency: when raw WPM exceeds caution, boost alpha so the displayed
+            // number catches up quickly and the alert can fire.
+            if (rawCurrentWpm >= settings.CautionWordsPerMinute)
+            {
+                currentAlpha = isRising ? 0.75 : 0.35;
+            }
+
+            var currentWpm = SmoothWpm(smoothedCurrentWpm, rawCurrentWpm, currentAlpha);
+            var averageAlpha = rawAverageWpm >= smoothedRollingWpm ? 0.22 : 0.18;
+            var averageWpm = SmoothWpm(smoothedRollingWpm, rawAverageWpm, averageAlpha);
+            smoothedCurrentWpm = currentWpm;
+            smoothedRollingWpm = averageWpm;
+
+            wpmHistory.Enqueue((now, currentWpm));
+            TrimHistory(now);
+
             var trend = GetTrend(now, currentWpm);
             var clarity = CalculateClarity(currentWpm, speechRatio, averagePause);
-            var alertLevel = DetermineAlert(now, currentWpm, speechRatio);
+            var hasStableEstimate = useTranscriptEstimate || signalHasStableEstimate;
+            var hasPreliminaryEstimate = !hasStableEstimate && rawSignalCurrentWpm > 0;
+
+            // Alert using only reliable sources: transcript when available, stable signal otherwise.
+            var rawAlertWpm = useTranscriptEstimate
+                ? transcriptMetrics.CurrentWordsPerMinute
+                : rawSignalStableWpm;
+            var alertLevel = DetermineAlert(now, currentWpm, rawAlertWpm, averageWpm);
 
             if (lastSnapshotAt is DateTimeOffset lastSnapshot)
             {
@@ -236,10 +335,12 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
                 PauseRatePerMinute = pauseRate,
                 AveragePauseMilliseconds = averagePause,
                 ClarityScore = clarity,
-                EnglishConfidence = null,
+                EnglishConfidence = transcriptMetrics.LatestConfidence,
+                TranscriptWordsPerMinute = transcriptMetrics.CurrentWordsPerMinute,
                 AlertLevel = alertLevel,
                 SignalLevel = rms,
-                StatusMessage = BuildStatusMessage(alertLevel, currentWpm, trend, averagePause),
+                RecognizedText = transcriptMetrics.LatestRecognizedText,
+                StatusMessage = BuildStatusMessage(alertLevel, currentWpm, trend, averagePause, hasStableEstimate, hasPreliminaryEstimate, transcriptMetrics),
             };
 
             snapshotToRaise = currentSnapshot;
@@ -283,7 +384,7 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
 
     private void DetectSyllablePeaks(float[] samples, int sampleRate, DateTimeOffset chunkStart, double speechThreshold)
     {
-        var peakThreshold = Math.Max(0.024, speechThreshold * 2.1);
+        var peakThreshold = Math.Max(0.026, speechThreshold * 2.25);
         var rearmThreshold = Math.Max(0.014, peakThreshold * 0.58);
 
         for (var index = 0; index < samples.Length; index++)
@@ -337,62 +438,91 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
 
     private void TrimHistory(DateTimeOffset now)
     {
-        while (wpmHistory.Count > 0 && (now - wpmHistory.Peek().Timestamp).TotalSeconds > 12)
+        while (wpmHistory.Count > 0 && (now - wpmHistory.Peek().Timestamp).TotalSeconds > 30)
         {
             wpmHistory.Dequeue();
         }
     }
 
-    private double EstimateResponsiveWordsPerMinute(DateTimeOffset now, TimeSpan window)
+    private double EstimateResponsiveWordsPerMinute(DateTimeOffset now, TimeSpan window, double minimumSpeechSeconds, int minimumPeakCount, double minimumAnalysisSpanSeconds)
     {
-        var threshold = now - window;
-        var recentPeaks = syllablePeaks.Where(peak => peak >= threshold).ToList();
+        var recentPeaks = GetRecentPeaks(now, window);
         var recentSpeechSeconds = GetSpeechSeconds(now, window);
-        if (recentPeaks.Count < MinimumResponsivePeakCount || recentSpeechSeconds < MinimumResponsiveSpeechSeconds)
+        if (recentPeaks.Count < minimumPeakCount || recentSpeechSeconds < minimumSpeechSeconds)
         {
             return 0;
         }
 
         var activeSpanSeconds = Math.Max(
-            (recentPeaks[^1] - recentPeaks[0]).TotalSeconds + 0.24,
+            (recentPeaks[^1] - recentPeaks[0]).TotalSeconds + 0.3,
             recentSpeechSeconds);
 
-        var analysisSpanSeconds = Math.Clamp(activeSpanSeconds, 2.4, window.TotalSeconds);
-        var activeWordsPerMinute = (recentPeaks.Count * (60d / analysisSpanSeconds)) / SyllablesPerWord;
-        var fixedWindowWordsPerMinute = (recentPeaks.Count * (60d / window.TotalSeconds)) / SyllablesPerWord;
-        var evidenceWeight = Math.Clamp((recentSpeechSeconds / window.TotalSeconds) + 0.25, 0.55, 0.88);
-        var wordsPerMinute = (activeWordsPerMinute * evidenceWeight) + (fixedWindowWordsPerMinute * (1 - evidenceWeight));
+        var analysisSpanSeconds = Math.Clamp(activeSpanSeconds, minimumAnalysisSpanSeconds, window.TotalSeconds);
 
-        var silenceSeconds = (now - recentPeaks[^1]).TotalSeconds;
-        if (silenceSeconds > 0.65)
+        // Primary: words per minute based on speech-active time.
+        var activeWordsPerMinute = (recentPeaks.Count * (60d / analysisSpanSeconds)) / SyllablesPerWord;
+
+        // Use the active rate directly when speech fills enough of the window.
+        // Only blend with the diluted window rate for very sparse speech.
+        var speechFill = recentSpeechSeconds / window.TotalSeconds;
+        double wordsPerMinute;
+        if (speechFill >= 0.35)
         {
-            var fadeSeconds = Math.Max(1.2, window.TotalSeconds * 0.3);
-            var decay = 1 - Math.Clamp((silenceSeconds - 0.65) / fadeSeconds, 0, 1);
+            wordsPerMinute = activeWordsPerMinute;
+        }
+        else
+        {
+            var fixedWindowWordsPerMinute = (recentPeaks.Count * (60d / window.TotalSeconds)) / SyllablesPerWord;
+            var activeWeight = Math.Clamp(speechFill + 0.55, 0.55, 0.95);
+            wordsPerMinute = (activeWordsPerMinute * activeWeight) + (fixedWindowWordsPerMinute * (1 - activeWeight));
+        }
+
+        // Decay only after extended silence; natural inter-sentence pauses
+        // of up to 1.5 seconds should not reduce the estimate.
+        var silenceSeconds = (now - recentPeaks[^1]).TotalSeconds;
+        if (silenceSeconds > 1.5)
+        {
+            var fadeSeconds = Math.Max(2.0, window.TotalSeconds * 0.4);
+            var decay = 1 - Math.Clamp((silenceSeconds - 1.5) / fadeSeconds, 0, 1);
             wordsPerMinute *= decay;
         }
 
-        return wordsPerMinute;
+        return Math.Clamp(wordsPerMinute, 0, MaximumPlausibleWordsPerMinute);
     }
 
     private double EstimateRollingWordsPerMinute(DateTimeOffset now, TimeSpan window)
     {
+        var speechSeconds = GetSpeechSeconds(now, window);
+        if (speechSeconds < MinimumRollingSpeechSeconds)
+        {
+            return 0;
+        }
+
         var peaks = GetPeakCount(now, window);
         if (peaks == 0)
         {
             return 0;
         }
 
-        var speechSeconds = GetSpeechSeconds(now, window);
+        var syllablesPerMinute = peaks * (60d / window.TotalSeconds);
+        return Math.Clamp(syllablesPerMinute / SyllablesPerWord, 0, MaximumPlausibleWordsPerMinute);
+    }
 
-        var effectiveWindowSeconds = Math.Clamp(speechSeconds, 6, window.TotalSeconds);
-        var syllablesPerMinute = peaks * (60d / effectiveWindowSeconds);
-        return syllablesPerMinute / SyllablesPerWord;
+    private List<DateTimeOffset> GetRecentPeaks(DateTimeOffset now, TimeSpan window)
+    {
+        var threshold = now - window;
+        return syllablePeaks.Where(peak => peak >= threshold).ToList();
+    }
+
+    private bool HasEnoughSpeechEvidence(DateTimeOffset now, TimeSpan window, double minimumSpeechSeconds, int minimumPeakCount)
+    {
+        return GetSpeechSeconds(now, window) >= minimumSpeechSeconds
+            && GetPeakCount(now, window) >= minimumPeakCount;
     }
 
     private int GetPeakCount(DateTimeOffset now, TimeSpan window)
     {
-        var threshold = now - window;
-        return syllablePeaks.Count(peak => peak >= threshold);
+        return GetRecentPeaks(now, window).Count;
     }
 
     private double GetSpeechSeconds(DateTimeOffset now, TimeSpan window)
@@ -432,8 +562,19 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
 
     private double GetTrend(DateTimeOffset now, double currentWpm)
     {
-        var baseline = wpmHistory.LastOrDefault(entry => (now - entry.Timestamp) >= TrendLookbackWindow);
-        return baseline == default ? 0 : currentWpm - baseline.Wpm;
+        // Compare current WPM to the average of historical values 6-10 seconds ago.
+        var lookbackStart = now - TrendLookbackWindow - TimeSpan.FromSeconds(2);
+        var lookbackEnd = now - TrendLookbackWindow + TimeSpan.FromSeconds(2);
+        var baselineEntries = wpmHistory
+            .Where(entry => entry.Timestamp >= lookbackStart && entry.Timestamp <= lookbackEnd)
+            .ToList();
+        if (baselineEntries.Count == 0)
+        {
+            return 0;
+        }
+
+        var baseline = baselineEntries.Average(entry => entry.Wpm);
+        return currentWpm - baseline;
     }
 
     private double CalculateClarity(double currentWpm, double speechRatio, double averagePause)
@@ -448,40 +589,91 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
         return Math.Clamp(clarity, 35, 100);
     }
 
-    private PaceAlertLevel DetermineAlert(DateTimeOffset now, double currentWpm, double speechRatio)
+    private PaceAlertLevel DetermineAlert(DateTimeOffset now, double currentWpm, double rawAlertWpm, double averageWpm)
     {
+        // Immediate triggers on raw alert WPM (stable signal + transcript only,
+        // NOT bridge) so fast speech is detected the instant reliable evidence
+        // arrives, without waiting for EMA to catch up.
         var recentSpeechSeconds = GetSpeechSeconds(now, LiveWpmWindow);
-        var recentPeakCount = GetPeakCount(now, LiveWpmWindow);
+        if (recentSpeechSeconds >= MinimumAlertSpeechSeconds && rawAlertWpm > 0)
+        {
+            if (rawAlertWpm >= settings.CriticalWordsPerMinute)
+            {
+                lastAlertLevel = PaceAlertLevel.Critical;
+                return lastAlertLevel;
+            }
 
-        if (speechRatio < 0.18
-            || currentWpm < 80
-            || recentSpeechSeconds < MinimumAlertSpeechSeconds
-            || recentPeakCount < MinimumAlertPeakCount)
+            if (rawAlertWpm >= settings.CautionWordsPerMinute)
+            {
+                lastAlertLevel = PaceAlertLevel.Caution;
+                return lastAlertLevel;
+            }
+        }
+
+        // Without reliable evidence from stable signal or transcript,
+        // only allow de-escalation based on the displayed WPM.
+        if (rawAlertWpm <= 0)
+        {
+            if (currentWpm < settings.CautionWordsPerMinute - settings.HysteresisWordsPerMinute)
+            {
+                lastAlertLevel = PaceAlertLevel.Calm;
+            }
+            else if (lastAlertLevel == PaceAlertLevel.Critical
+                && currentWpm < settings.CriticalWordsPerMinute - settings.HysteresisWordsPerMinute)
+            {
+                lastAlertLevel = PaceAlertLevel.Caution;
+            }
+
+            return lastAlertLevel;
+        }
+
+        // If WPM is very low, reset to Calm immediately.
+        if (currentWpm < 60 && rawAlertWpm < 60)
         {
             lastAlertLevel = PaceAlertLevel.Calm;
             return lastAlertLevel;
         }
 
+        // Hysteresis: use rawAlertWpm for de-escalation decisions so alerts don't
+        // flicker from noisy bridge estimates.
+        var effectiveWpm = (rawAlertWpm * 0.75) + (averageWpm * 0.25);
         var cautionFloor = settings.CautionWordsPerMinute;
         var criticalFloor = settings.CriticalWordsPerMinute;
         var hysteresis = settings.HysteresisWordsPerMinute;
 
         lastAlertLevel = lastAlertLevel switch
         {
-            PaceAlertLevel.Critical when currentWpm >= criticalFloor - hysteresis => PaceAlertLevel.Critical,
-            PaceAlertLevel.Critical when currentWpm >= cautionFloor - hysteresis => PaceAlertLevel.Caution,
-            PaceAlertLevel.Caution when currentWpm >= criticalFloor => PaceAlertLevel.Critical,
-            PaceAlertLevel.Caution when currentWpm >= cautionFloor - hysteresis => PaceAlertLevel.Caution,
-            _ when currentWpm >= criticalFloor => PaceAlertLevel.Critical,
-            _ when currentWpm >= cautionFloor => PaceAlertLevel.Caution,
+            PaceAlertLevel.Critical when effectiveWpm >= criticalFloor - hysteresis => PaceAlertLevel.Critical,
+            PaceAlertLevel.Critical when effectiveWpm >= cautionFloor - hysteresis => PaceAlertLevel.Caution,
+            PaceAlertLevel.Caution when effectiveWpm >= criticalFloor => PaceAlertLevel.Critical,
+            PaceAlertLevel.Caution when effectiveWpm >= cautionFloor - hysteresis => PaceAlertLevel.Caution,
+            _ when effectiveWpm >= criticalFloor => PaceAlertLevel.Critical,
+            _ when effectiveWpm >= cautionFloor => PaceAlertLevel.Caution,
             _ => PaceAlertLevel.Calm,
         };
 
         return lastAlertLevel;
     }
 
-    private static string BuildStatusMessage(PaceAlertLevel alertLevel, double currentWpm, double trend, double averagePause)
+    private static string BuildStatusMessage(PaceAlertLevel alertLevel, double currentWpm, double trend, double averagePause, bool hasStableEstimate, bool hasPreliminaryEstimate, TranscriptMetricsSnapshot transcriptMetrics)
     {
+        if (hasPreliminaryEstimate)
+        {
+            return transcriptMetrics.IsAvailable
+                ? "Live WPM is warming up from audio while transcript timing catches up."
+                : "Live WPM is warming up from audio. Keep talking for a steadier reading.";
+        }
+
+        if (transcriptMetrics.IsAvailable && !hasStableEstimate)
+        {
+            return transcriptMetrics.StatusMessage;
+        }
+
+        if (!hasStableEstimate)
+        {
+            return "Listening for speech before estimating your pace.";
+        }
+
         return alertLevel switch
         {
             PaceAlertLevel.Critical => $"You are moving too fast at about {currentWpm:N0} WPM. Finish the sentence, then pause.",
@@ -490,5 +682,12 @@ public sealed class SignalPaceMetricsEngine : IPaceMetricsEngine
             _ when averagePause > 0 && averagePause < 260 => "Your words are clear, but the pauses are getting short.",
             _ => "Steady pace. Keep the same rhythm.",
         };
+    }
+
+    private static double SmoothWpm(double previousValue, double nextValue, double alpha)
+    {
+        return previousValue <= 0
+            ? nextValue
+            : (previousValue * (1 - alpha)) + (nextValue * alpha);
     }
 }

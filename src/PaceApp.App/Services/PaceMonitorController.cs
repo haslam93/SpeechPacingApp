@@ -40,6 +40,13 @@ public sealed class PaceMonitorController : IDisposable
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         Settings = await appStateRepository.LoadSettingsAsync(cancellationToken);
+        if (Settings.UsesLegacyDefaultPaceBand())
+        {
+            Settings = Settings.Clone();
+            Settings.ApplyRecommendedPaceBand();
+            await appStateRepository.SaveSettingsAsync(Settings, cancellationToken);
+        }
+
         RecentSessions = (await appStateRepository.LoadSessionsAsync(cancellationToken)).Take(12).ToList();
         CurrentSnapshot = LivePaceSnapshot.Idle();
     }

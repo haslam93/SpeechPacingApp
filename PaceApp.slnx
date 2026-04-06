@@ -3,6 +3,7 @@
     <Project Path="src/PaceApp.Analytics/PaceApp.Analytics.csproj" />
     <Project Path="src/PaceApp.App/PaceApp.App.csproj" />
     <Project Path="src/PaceApp.Audio/PaceApp.Audio.csproj" />
+    <Project Path="src/PaceApp.Calibration/PaceApp.Calibration.csproj" />
     <Project Path="src/PaceApp.Core/PaceApp.Core.csproj" />
     <Project Path="src/PaceApp.Infrastructure/PaceApp.Infrastructure.csproj" />
   </Folder>

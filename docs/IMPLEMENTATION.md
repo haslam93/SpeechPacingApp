@@ -2,7 +2,7 @@
 title: PaceApp implementation notes
 description: Detailed record of what was created during the first PaceApp implementation pass, including project structure, design choices, and validation work
 author: GitHub Copilot
-ms.date: 2026-04-01
+ms.date: 2026-04-06
 ms.topic: how-to
 keywords:
   - implementation
@@ -15,17 +15,18 @@ estimated_reading_time: 10
 
 ## Summary
 
-The first implementation pass established a buildable Windows desktop app that can act as a speaking-pace sidecar during Teams calls. The work focused on getting the core product loop in place before adding transcript-based speech intelligence.
+The first implementation pass established a buildable Windows desktop app that can act as a speaking-pace sidecar during Teams calls. The current version uses Vosk offline speech recognition for accurate transcript-backed WPM estimation.
 
 The current version includes:
 
 * A native Windows desktop shell with tray behavior and an always-on-top overlay
 * Shared-mode microphone capture through WASAPI by way of NAudio
-* Live pace estimation from audio signal activity and pause structure
+* Live pace estimation that prefers local transcript timing and falls back to audio signal activity and pause structure when needed
 * Visual alert states for calm, caution, and critical pacing
 * Local persistence for app settings and recent session summaries
 * Root-level launch scripts for visible and tray startup
 * In-app troubleshooting UI backed by a file-based diagnostics log
+* A calibration console that compares signal and transcript pace estimates on generated sample audio
 * A self-contained published Windows build and a custom app, window, and tray icon
 
 ## Decisions made during implementation
@@ -34,7 +35,7 @@ The original research direction favored a native Windows shell with shared micro
 
 * The shell uses WPF on .NET 10 instead of WinUI 3 because the local machine did not have the WinUI or Windows App SDK templates installed.
 * The audio layer uses `NAudio` to keep WASAPI capture manageable in C#.
-* The first pace engine is signal-derived so the app remains local-first and buildable without introducing an on-device ASR stack in the same pass.
+* The pace engine uses Vosk offline speech recognition for transcript-backed WPM with word-level timing, replacing the earlier `System.Speech` approach that produced garbled transcripts. The signal-derived path is retained as fallback and supporting context.
 * Settings and recent sessions are stored in a local JSON file to keep the persistence layer simple and inspectable.
 
 ## Work completed
@@ -132,11 +133,18 @@ The pace engine lives in `src/PaceApp.Analytics`.
 Created:
 
 * `Services/SignalPaceMetricsEngine.cs`
+* `Services/VoskTranscriptAnalyzer.cs`
+* `Services/ITranscriptMetricsSource.cs`
 
 Implemented behavior:
 
+* Start Vosk offline speech recognition with a small English model (~40 MB, auto-downloaded)
+* Feed resampled 16 kHz mono PCM audio from the NAudio capture pipeline into Vosk
+* Extract word-level timing and confidence from final and partial results
+* Prefer transcript-backed current and rolling WPM from recognized phrases
+* Fall back to signal-derived pace estimation if Vosk cannot start
 * Track rolling audio-energy envelope changes to estimate syllable-like peaks
-* Estimate pace over short and long windows from recent peak activity
+* Estimate pace over short and long windows from recent peak activity when transcript timing is not available
 * Track speech ratio over rolling windows
 * Detect pauses and compute pause rate and average pause duration
 * Compute a simple trend value from recent WPM history
@@ -144,6 +152,22 @@ Implemented behavior:
 * Apply hysteresis-aware calm, caution, and critical alert states
 * Require stronger syllable-peak evidence and sustained speech before warning states activate so short or slow phrases are less likely to trigger false red alerts
 * Build a session summary at the end of monitoring
+
+### Calibration and validation tooling
+
+The sample-audio calibration harness lives in `src/PaceApp.Calibration`.
+
+Created:
+
+* `PaceApp.Calibration.csproj`
+* `Program.cs`
+
+Implemented behavior:
+
+* Generate slow, normal, and fast sample WAV files by using Windows SAPI voices
+* Run the signal-based engine against those samples without live ASR enabled
+* Run the transcript analyzer against the same wave files
+* Save a comparison report under `artifacts/calibration/calibration-report.txt`
 
 ### Persistence layer
 
@@ -179,6 +203,7 @@ PaceApp/
     PaceApp.App/
     PaceApp.Audio/
     PaceApp.Analytics/
+    PaceApp.Calibration/
     PaceApp.Core/
     PaceApp.Infrastructure/
 ```
@@ -190,7 +215,7 @@ The current runtime flow is straightforward.
 1. The desktop shell starts and loads saved settings and recent session history.
 2. When monitoring starts, the shell asks the audio layer to bind to the default communications microphone.
 3. The audio layer emits normalized `AudioFrame` objects.
-4. The analytics layer converts those frames into live pacing metrics and alert states.
+4. The analytics layer converts those frames into live pacing metrics and alert states, preferring transcript timing from local speech recognition and falling back to audio-signal estimates when necessary.
 5. The shell updates the overlay view model and redraws the live coaching UI.
 6. The diagnostics service records startup and troubleshooting events to a local log and surfaces recent messages in the main window.
 7. When monitoring stops, the analytics layer returns a `SessionSummary` and the infrastructure layer persists it locally.
@@ -235,6 +260,13 @@ dotnet publish .\src\PaceApp.App\PaceApp.App.csproj -c Release -r win-x64 --self
 ```
 
 * Verified that a second visible launch reopens the existing app window instead of spawning a duplicate hidden instance.
+* Ran the calibration harness with:
+
+```powershell
+dotnet run --project .\src\PaceApp.Calibration\PaceApp.Calibration.csproj
+```
+
+* Compared signal-only and transcript-backed pace estimates on generated slow, normal, and fast sample audio.
 
 The visible launcher was verified after fixing a startup XAML binding bug that originally caused the PaceApp error dialog during window creation.
 
@@ -244,8 +276,9 @@ The diagnostics log exposed that failure clearly: a `ProgressBar` binding attemp
 
 The current build is a strong first scaffold, but it is not the finished product yet.
 
-* Pace is estimated from signal activity, not transcript-derived word count.
-* There is no on-device ASR pipeline yet.
+* The transcript-backed path uses the Vosk offline speech recognizer, which auto-downloads a small English model on first launch.
+* Vosk provides substantially more accurate transcripts and word-level timing than the earlier System.Speech approach.
+* Transcript pacing is more reliable than the signal-only estimate but may still benefit from threshold tuning with different headsets.
 * Teams is treated as a normal microphone consumer. There is no Teams-specific SDK integration.
 * Device change handling uses polling rather than a richer device-notification mechanism.
 * The app has not yet been calibrated against multiple real call recordings.
@@ -257,7 +290,7 @@ The current build is a strong first scaffold, but it is not the finished product
 
 The next engineering pass should focus on quality rather than more shell work.
 
-* Introduce a local ASR path to replace the signal-derived WPM estimate.
-* Add calibration and threshold tuning against real headset and laptop microphone recordings.
+* Fine-tune the transcript smoothing and alert thresholds against real headset and laptop microphone recordings.
+* Surface the active estimation mode in the UI so the user can see whether PaceApp is using transcript or fallback signal mode.
 * Add richer diagnostics for exclusive-mode failures, permission issues, and mid-call device switches.
 * Package the app for easier local installation once the live metrics stabilize.

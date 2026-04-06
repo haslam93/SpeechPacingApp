@@ -2,7 +2,7 @@
 title: PaceApp
 description: Windows desktop sidecar for monitoring speaking pace during Microsoft Teams calls and warning when the user starts speaking too fast
 author: GitHub Copilot
-ms.date: 2026-04-01
+ms.date: 2026-04-06
 ms.topic: overview
 keywords:
   - windows
@@ -33,9 +33,9 @@ More detailed implementation notes live in [docs/IMPLEMENTATION.md](docs/IMPLEME
 
 ## Current status
 
-The app is buildable, launches successfully on Windows, and now has a verified self-contained published output under `published\PaceCoach-win-x64`. The first version uses a WPF shell because the local machine did not have WinUI or Windows App SDK templates installed at scaffold time.
+The app is buildable, launches successfully on Windows, and has an updated self-contained published output under `published\PaceCoach-win-x64`. The first version uses a WPF shell because the local machine did not have WinUI or Windows App SDK templates installed at scaffold time.
 
-The live speed signal is currently estimated from audio peaks and pause structure. It is useful for coaching, but it is not yet a transcript-based words-per-minute pipeline. The detector has been tightened so short phrases and slow introductions are less likely to trip false red alerts, but it remains an approximation.
+The live pace pipeline uses Vosk, an offline open-source speech recognizer, to estimate words per minute from recognized phrases with word-level timing. The Vosk model (~40 MB) auto-downloads on first launch and runs entirely on-device with no cloud dependency. If Vosk cannot start, PaceApp falls back to the older audio-only signal estimate so monitoring can still run. A calibration harness compares both approaches against generated slow, normal, and fast sample audio.
 
 The supported source-workflow launch path is the root-level visible launcher, `Start-PaceApp.cmd`. It builds the desktop app project, recovers from stale WPF-generated files if needed, and opens the visible PaceApp window with the current troubleshooting panel.
 
@@ -47,6 +47,7 @@ The solution is split into focused projects so the desktop shell can evolve with
 * `src/PaceApp.Core`: shared models and service contracts
 * `src/PaceApp.Audio`: microphone capture and device monitoring
 * `src/PaceApp.Analytics`: live pace estimation and alert scoring
+* `src/PaceApp.Calibration`: sample-audio calibration harness for pace validation
 * `src/PaceApp.Infrastructure`: local settings and session-history persistence
 
 ## Prerequisites
@@ -174,6 +175,7 @@ The current implementation does not upload call data and does not require a clou
 ## Key behaviors in the current build
 
 * The app prefers the Windows communications microphone, which is the right default for Teams calls.
+* The live WPM path uses Vosk offline speech recognition for accurate transcript-backed WPM and falls back to audio-only estimation if Vosk cannot start.
 * The visible launcher is the recommended way to open settings and diagnostics while working from source.
 * The published executable in `published\PaceCoach-win-x64` is the easiest path for simple double-click launching.
 * The tray icon uses the custom Pace Coach icon and can reopen the app, hide the window, start or stop monitoring, and exit the process.
@@ -185,7 +187,8 @@ The current implementation does not upload call data and does not require a clou
 
 ## Known limitations
 
-* The pace estimate is signal-based, not ASR-based, so it is an approximation.
+* The Vosk model (~40 MB) auto-downloads on first launch and is cached locally. An internet connection is needed once.
+* Transcript-backed pace is substantially better than the signal-only estimate but may still benefit from threshold tuning with different headsets.
 * There is no direct Teams integration or call-state detection yet.
 * The shell is WPF for now because WinUI scaffolding was not available locally.
 * There are no automated tests yet.
@@ -193,6 +196,6 @@ The current implementation does not upload call data and does not require a clou
 
 ## Next steps
 
-* Replace the signal-derived pace estimate with a local transcript-based words-per-minute pipeline.
-* Calibrate thresholds with real headset and laptop microphone recordings.
+* Fine-tune transcript smoothing and alert thresholds with real headset and laptop microphone recordings.
+* Add automated tests for the pace engine and Vosk integration.
 * Add stronger device-change handling and more detailed diagnostics around live call scenarios.

@@ -24,9 +24,13 @@ public sealed class LivePaceSnapshot
 
     public double? EnglishConfidence { get; init; }
 
+    public double TranscriptWordsPerMinute { get; init; }
+
     public PaceAlertLevel AlertLevel { get; init; } = PaceAlertLevel.Calm;
 
     public double SignalLevel { get; init; }
+
+    public string RecognizedText { get; init; } = string.Empty;
 
     public string StatusMessage { get; init; } = "Ready to monitor your next Teams call.";
 

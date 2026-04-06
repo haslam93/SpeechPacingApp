@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using PaceApp.App.Services;
 using PaceApp.Core.Models;
@@ -24,6 +25,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private readonly PaceMonitorController controller;
     private readonly AppDiagnosticsService diagnosticsService;
     private readonly StartupRegistrationService startupRegistrationService;
+    private readonly AccuracyLogService accuracyLogService = new();
     private readonly AsyncRelayCommand startMonitoringCommand;
     private readonly AsyncRelayCommand stopMonitoringCommand;
 
@@ -46,8 +48,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private bool startWithWindows;
     private string statusMessage = "Ready to monitor your next Teams call.";
     private double trendWpm;
+    private double transcriptWpm;
     private bool suppressSettingSave;
     private string launchModeLabel = "Visible startup";
+    private bool isRecordingAccuracy;
+    private DateTimeOffset monitoringStartTime;
+    private string monitoringButtonLabel = "▶  Start monitoring";
 
     public MainWindowViewModel(
         PaceMonitorController controller,
@@ -64,6 +70,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         ExitCommand = new RelayCommand(() => ExitRequested?.Invoke(this, EventArgs.Empty));
         CopyDiagnosticsCommand = new RelayCommand(CopyDiagnostics);
         OpenDiagnosticsCommand = new RelayCommand(OpenDiagnostics);
+        OpenAccuracyLogCommand = new RelayCommand(OpenAccuracyLogFolder);
 
         controller.SnapshotUpdated += OnSnapshotUpdated;
         controller.StatusChanged += OnStatusChanged;
@@ -93,6 +100,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public RelayCommand CopyDiagnosticsCommand { get; }
 
     public RelayCommand OpenDiagnosticsCommand { get; }
+
+    public RelayCommand OpenAccuracyLogCommand { get; }
 
     public bool CanCloseWindow => canCloseWindow;
 
@@ -245,15 +254,48 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public string TrendLabel => TrendWpm switch
     {
-        > 10 => $"Rising +{TrendWpm:N0}",
-        < -10 => $"Settling {TrendWpm:N0}",
-        _ => "Steady",
+        > 3 => $"⬆ Rising +{TrendWpm:N0}",
+        < -3 => $"⬇ Settling {TrendWpm:N0}",
+        _ => "― Steady",
     };
 
     public string ThresholdSummary =>
         $"Target around {controller.Settings.TargetWordsPerMinute:N0} WPM. Caution from {controller.Settings.CautionWordsPerMinute:N0}. Red from {controller.Settings.CriticalWordsPerMinute:N0}.";
 
     public string SessionCountLabel => RecentSessions.Count == 0 ? "No saved sessions yet" : $"{RecentSessions.Count} recent";
+
+    public bool IsRecordingAccuracy
+    {
+        get => isRecordingAccuracy;
+        set
+        {
+            if (SetProperty(ref isRecordingAccuracy, value))
+            {
+                if (value)
+                {
+                    accuracyLogService.Start();
+                    AppendDiagnostic($"Accuracy log started: {accuracyLogService.CurrentLogPath}");
+                }
+                else
+                {
+                    accuracyLogService.Stop();
+                    AppendDiagnostic("Accuracy log stopped.");
+                }
+            }
+        }
+    }
+
+    public double TranscriptWpm
+    {
+        get => transcriptWpm;
+        private set => SetProperty(ref transcriptWpm, value);
+    }
+
+    public string MonitoringButtonLabel
+    {
+        get => monitoringButtonLabel;
+        private set => SetProperty(ref monitoringButtonLabel, value);
+    }
 
     public string LaunchModeLabel
     {
@@ -303,6 +345,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         controller.SnapshotUpdated -= OnSnapshotUpdated;
         controller.StatusChanged -= OnStatusChanged;
         controller.SessionsUpdated -= OnSessionsUpdated;
+        accuracyLogService.Stop();
     }
 
     private void LoadInitialState()
@@ -338,8 +381,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         try
         {
+            monitoringStartTime = DateTimeOffset.UtcNow;
             await controller.StartMonitoringAsync();
             IsMonitoring = controller.IsMonitoring;
+            MonitoringButtonLabel = controller.IsMonitoring ? "🎙  Listening..." : "▶  Start monitoring";
             AppendDiagnostic(controller.IsMonitoring
                 ? "Monitoring started."
                 : "Monitoring did not start. Check microphone status above.");
@@ -359,6 +404,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             await controller.StopMonitoringAsync();
             IsMonitoring = controller.IsMonitoring;
+            MonitoringButtonLabel = "▶  Start monitoring";
             AppendDiagnostic("Monitoring stopped.");
         }
         finally
@@ -412,6 +458,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         CurrentWpm = snapshot.EstimatedWordsPerMinute;
         RollingWpm = snapshot.RollingAverageWordsPerMinute;
+        TranscriptWpm = snapshot.TranscriptWordsPerMinute;
         TrendWpm = snapshot.TrendWordsPerMinute;
         PauseRatePerMinute = snapshot.PauseRatePerMinute;
         AveragePauseMilliseconds = snapshot.AveragePauseMilliseconds;
@@ -419,6 +466,11 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         SpeechRatioPercent = snapshot.SpeechRatio * 100;
         PaceNarrative = BuildNarrative(snapshot);
         ApplyAlertPalette(snapshot.AlertLevel);
+
+        if (accuracyLogService.IsRecording)
+        {
+            accuracyLogService.RecordSnapshot(snapshot, monitoringStartTime, snapshot.TranscriptWordsPerMinute);
+        }
     }
 
     private void ApplyAlertPalette(PaceAlertLevel alertLevel)
@@ -426,21 +478,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         switch (alertLevel)
         {
             case PaceAlertLevel.Critical:
-                AlertHeadline = "Too fast";
+                AlertHeadline = "🔴 Too fast";
                 AlertBackgroundBrush = CriticalBackgroundBrush;
                 AlertBorderBrush = CriticalBorderBrush;
                 AlertBadgeBrush = CriticalBadgeBrush;
                 break;
 
             case PaceAlertLevel.Caution:
-                AlertHeadline = "Ease back";
+                AlertHeadline = "🟡 Ease back";
                 AlertBackgroundBrush = CautionBackgroundBrush;
                 AlertBorderBrush = CautionBorderBrush;
                 AlertBadgeBrush = CautionBadgeBrush;
                 break;
 
             default:
-                AlertHeadline = "Steady";
+                AlertHeadline = "🟢 Steady";
                 AlertBackgroundBrush = CalmBackgroundBrush;
                 AlertBorderBrush = CalmBorderBrush;
                 AlertBadgeBrush = CalmBadgeBrush;
@@ -504,5 +556,23 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         diagnosticsService.OpenLogFolder();
         AppendDiagnostic("Opened the diagnostics log folder.");
+    }
+
+    private void OpenAccuracyLogFolder()
+    {
+        var logPath = accuracyLogService.GetLatestLogPath();
+        if (logPath is not null)
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Path.GetDirectoryName(logPath)!,
+                UseShellExecute = true
+            });
+            AppendDiagnostic("Opened accuracy log folder.");
+        }
+        else
+        {
+            AppendDiagnostic("No accuracy log recorded yet. Enable the toggle and speak first.");
+        }
     }
 }
